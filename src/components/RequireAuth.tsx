@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getClientAuth, ensureUid } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -8,6 +8,7 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const didRedirect = useRef(false);
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -36,13 +37,10 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
           }
           // Strong redirect to login
           const dest = `/auth/login?next=${encodeURIComponent(pathname || "/")}`;
-          try { router.replace(dest); } catch (_) {}
-          // Fallback to hard navigation in case router fails
-          setTimeout(() => {
-            try {
-              if (typeof window !== "undefined") window.location.href = dest;
-            } catch (_) {}
-          }, 200);
+          if (!didRedirect.current) {
+            didRedirect.current = true;
+            try { router.replace(dest); } catch (_) {}
+          }
         })();
       } else {
         setReady(true);
@@ -50,10 +48,10 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
       unsub = onAuthStateChanged(auth, (user) => {
         if (!user) {
           const dest = `/auth/login?next=${encodeURIComponent(pathname || "/")}`;
-          try { router.replace(dest); } catch (_) {}
-          setTimeout(() => {
-            try { if (typeof window !== "undefined") window.location.href = dest; } catch (_) {}
-          }, 200);
+          if (!didRedirect.current) {
+            didRedirect.current = true;
+            try { router.replace(dest); } catch (_) {}
+          }
         } else if (user.isAnonymous && onLocalhost) {
           setReady(true);
         } else {
@@ -62,10 +60,10 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
       });
     } catch (_) {
       const dest = `/auth/login?next=${encodeURIComponent(pathname || "/")}`;
-      try { router.replace(dest); } catch (_) {}
-      setTimeout(() => {
-        try { if (typeof window !== "undefined") window.location.href = dest; } catch (_) {}
-      }, 200);
+      if (!didRedirect.current) {
+        didRedirect.current = true;
+        try { router.replace(dest); } catch (_) {}
+      }
     }
     return () => {
       try { unsub && unsub(); } catch (_) {}
