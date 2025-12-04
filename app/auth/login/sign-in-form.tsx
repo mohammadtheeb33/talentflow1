@@ -39,8 +39,8 @@ export default function LoginForm() {
     } catch (err: any) {
       const code = err?.code ?? "";
       const baseMsg = translateError(code);
-      // أثناء التطوير المحلي، أظهر كود الخطأ للمساعدة على التشخيص
-      setMessage(isLocalhost && baseMsg === "تعذّر تسجيل الدخول" ? `${baseMsg} (${code || "unknown"})` : baseMsg);
+      // أظهر كود الخطأ دائمًا للمساعدة على التشخيص في أي بيئة
+      setMessage(code ? `${baseMsg} (${code})` : baseMsg);
     } finally {
       setLoading(false);
     }
