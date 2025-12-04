@@ -537,7 +537,15 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
           minYearsExp: Math.min(5, Math.max(1, (parsed?.experience?.length || 0))),
           educationLevel: (Array.isArray(parsed?.education) && parsed.education.length > 0) ? "bachelor" : "none",
           title: (data as any)?.jobTitle || "General Role",
-          weights: { skills: 0.5, experience: 0.3, education: 0.15, format: 0.05 }
+          // Align weights with scoring engine keys
+          weights: { 
+            roleFit: 0.05,
+            skillsQuality: 0.5, 
+            experienceQuality: 0.3, 
+            projectsImpact: 0.05, 
+            languageClarity: 0.05, 
+            atsFormat: 0.05 
+          }
         };
         jobId = "auto";
       } else {
