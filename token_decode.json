@@ -1,0 +1,13 @@
+﻿{
+    "aud":  "00000003-0000-0000-c000-000000000000",
+    "iss":  "https://sts.windows.net/5e658305-c879-493c-af12-af614eacabd6/",
+    "tid":  "5e658305-c879-493c-af12-af614eacabd6",
+    "upn":  "live.com#mhmdtheeb030@outlook.com",
+    "email":  "mhmdtheeb030@outlook.com",
+    "scp":  "email Mail.Read openid profile User.Read",
+    "idp":  "live.com",
+    "idtyp":  "user",
+    "iat":  1763628871,
+    "exp":  1763633917,
+    "nbf":  1763628871
+}

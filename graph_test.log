@@ -1,0 +1,42 @@
+﻿=== GET /me ===
+{
+    "@odata.context":  "https://graph.microsoft.com/v1.0/$metadata#users/$entity",
+    "businessPhones":  [
+
+                       ],
+    "displayName":  "Mohammad Theeb",
+    "givenName":  "Mohammad",
+    "jobTitle":  null,
+    "mail":  null,
+    "mobilePhone":  null,
+    "officeLocation":  null,
+    "preferredLanguage":  "en",
+    "surname":  "Theeb",
+    "userPrincipalName":  "mhmdtheeb030_outlook.com#EXT#@mhmdtheeb030outlook.onmicrosoft.com",
+    "id":  "7732253e-95c7-4b83-af67-1e8b806ef2c8"
+}
+=== GET /me/mailFolders/inbox/messages ===
+The remote server returned an error: (401) Unauthorized.
+=== GET /me/messages with hasAttachments ===
+The remote server returned an error: (401) Unauthorized.
+=== GET /me/mailboxSettings ===
+The remote server returned an error: (401) Unauthorized.
+=== GET /me/mailFolders ===
+The remote server returned an error: (401) Unauthorized.
+=== TEST RUN 2025-11-20T12:04:20.3013217+03:00 ===
+=== GET /me/mailFolders ===
+{
+    "title":  "GET /me/mailFolders",
+    "status":  401,
+    "message":  "The remote server returned an error: (401) Unauthorized.",
+    "wwwAuthenticate":  null,
+    "body":  ""
+}
+=== GET /me/messages?hasAttachments ===
+{
+    "title":  "GET /me/messages?$filter=hasAttachments eq true",
+    "status":  401,
+    "message":  "The remote server returned an error: (401) Unauthorized.",
+    "wwwAuthenticate":  null,
+    "body":  ""
+}

@@ -1,0 +1,9 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/reports/page": "app/reports/page.js",
+  "/cvs/page": "app/cvs/page.js",
+  "/job-profiles/new/page": "app/job-profiles/new/page.js",
+  "/Dashboard/page": "app/Dashboard/page.js",
+  "/cvs/[cvId]/page": "app/cvs/[cvId]/page.js",
+  "/settings/page": "app/settings/page.js"
+}
