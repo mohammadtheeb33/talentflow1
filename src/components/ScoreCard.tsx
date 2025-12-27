@@ -75,7 +75,7 @@ function ScoreItem({
   );
 }
 
-export default function ScoreCard({ cv }: { cv: any }) {
+export default function ScoreCard({ cv }: { cv: CV | null }) {
   // Robust score parsing
   const rawScore = cv?.score;
   let score: number | null = null;

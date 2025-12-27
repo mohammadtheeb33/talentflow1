@@ -6,27 +6,9 @@ import { getClientFirestore } from "@/lib/firebase";
 import { updateHiringStatus, HiringStatus } from "@/services/hiringService";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle } from "lucide-react";
+import { CV } from "@/types/cv";
 
-export type CandidateItem = {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  parsed?: {
-    name?: string;
-    email?: string;
-    [key: string]: any;
-  };
-  jobProfileId?: string | null;
-  jobTitle?: string | null;
-  source?: string | null;
-  submittedAt?: any;
-  updatedAt?: any;
-  score?: number | null;
-  status?: string | null;
-  hiringStatus?: HiringStatus;
-  decidedAt?: any;
-  decidedBy?: string | null;
-};
+export type CandidateItem = CV;
 
 function initials(name?: string | null, email?: string | null): string {
   const n = (name || "").trim();

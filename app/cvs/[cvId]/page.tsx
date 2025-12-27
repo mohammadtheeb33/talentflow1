@@ -53,6 +53,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import ScoreCard from "@/components/ScoreCard";
 import { evaluateCv, type JobProfile as EngineJobProfile, type EducationLevel } from "@/lib/scoreEngine";
+import { CV } from "@/types/cv";
 
 type JobProfile = {
   id: string;
@@ -62,45 +63,6 @@ type JobProfile = {
   minYearsExp?: number;
   educationLevel?: string;
 };
-
-interface CV {
-  id: string;
-  uid?: string;
-  status?: string;
-  filename?: string;
-  storagePath?: string;
-  companyId?: string;
-  jobProfileId?: string;
-  jobTitle?: string;
-  
-  parsed?: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    skills?: string[];
-    education?: any[];
-    experience?: any[];
-    summary?: string;
-    [key: string]: any;
-  };
-  
-  score?: number;
-  scoreExperienceYears?: number;
-  scoreBreakdown?: any;
-  scoreSkillsAnalysis?: {
-    missing?: string[];
-    [key: string]: any;
-  };
-  aiAnalysis?: string;
-  
-  createdAt?: any;
-  updatedAt?: any;
-  rescanRequestedAt?: any;
-  scoreRequestedAt?: any;
-  
-  name?: string;
-  email?: string;
-}
 
 function mergeCvData(prev: CV | null, newData: CV): CV {
   if (!prev) return newData;

@@ -1,6 +1,7 @@
 import { getClientFirestore, getClientAuth } from "@/lib/firebase";
 import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { evaluateCv, type JobProfile } from "@/lib/scoreEngine";
+import { CV } from "@/types/cv";
 
 export async function processBatchScoring(
   cvIds: string[],
@@ -46,8 +47,8 @@ export async function processBatchScoring(
         continue;
       }
 
-      const parsed = (cvData as any)?.parsed;
-      const rawText = (cvData as any)?.text || (cvData as any)?.content || (parsed ? JSON.stringify(parsed) : "");
+      const parsed = cvData.parsed;
+      const rawText = cvData.text || cvData.content || (parsed ? JSON.stringify(parsed) : "");
       if (!rawText) {
         failCount++;
         onProgress(i + 1, cvIds.length, "No text content available");
