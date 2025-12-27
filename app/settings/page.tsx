@@ -1,7 +1,12 @@
 "use client";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import PipelineSettings from "@/components/PipelineSettings";
+import dynamic from "next/dynamic";
+
+const PipelineSettings = dynamic(() => import("@/components/PipelineSettings"), {
+  loading: () => <div className="h-96 w-full rounded-xl bg-gray-50 animate-pulse" />,
+  ssr: false,
+});
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();

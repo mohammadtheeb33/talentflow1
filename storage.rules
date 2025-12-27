@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Rules for CVs
+    // Path: cvs/{candidateId}/original/{filename}
+    match /cvs/{candidateId}/original/{filename} {
+      // Allow read/write if authenticated
+      // Ideally we would check if request.auth.uid matches the owner of the candidate document,
+      // but in storage rules we don't have easy access to Firestore data.
+      // So we rely on the fact that the upload logic generates the path.
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Legacy or Unscoped paths (if needed)
+    match /unscoped/{allPaths=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Companies paths (if needed)
+    match /companies/{companyId}/{allPaths=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

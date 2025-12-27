@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously, type User } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator, writeBatch, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { getStorage, ref as storageRef, getDownloadURL, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -12,6 +12,10 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
+
+if (typeof window !== "undefined" && !firebaseConfig.apiKey) {
+  console.error("Firebase config missing! Check .env.local");
+}
 
 let appInstance: ReturnType<typeof initializeApp> | null = null;
 export function getClientAuth() {
@@ -129,4 +133,62 @@ export async function ensureUid(): Promise<string> {
     }
     throw e;
   }
+}
+
+export async function updateCandidateStatusBatch(candidateIds: string[], newStatus: string): Promise<void> {
+  const db = getClientFirestore();
+  const batch = writeBatch(db);
+
+  // Determine if we should skip scoring
+  const shouldSkipScoring = ["rejected", "strong_fit", "accepted", "not_a_fit", "hired", "interview", "interviewed", "offer_sent"].includes(newStatus.toLowerCase());
+
+  candidateIds.forEach((id) => {
+    const ref = doc(db, "cvs", id);
+    const updateData: any = { 
+      status: newStatus, 
+      updatedAt: new Date(),
+      statusUpdatedAt: new Date()
+    };
+    
+    if (shouldSkipScoring) {
+       updateData.skipScoring = true;
+       updateData._skipScoring = true;
+       updateData.doNotScore = true;
+    }
+
+    batch.update(ref, updateData);
+  });
+
+  await batch.commit();
+}
+
+export async function deleteCandidatesBatch(candidateIds: string[]): Promise<void> {
+  const db = getClientFirestore();
+  const batch = writeBatch(db);
+
+  candidateIds.forEach((id) => {
+    const ref = doc(db, "cvs", id);
+    batch.delete(ref);
+  });
+
+  await batch.commit();
+}
+
+export async function disconnectOutlook(uid: string): Promise<void> {
+  const db = getClientFirestore();
+  const ref = doc(db, "users", uid);
+  await setDoc(ref, {
+    outlookAccessToken: null,
+    outlookRefreshToken: null,
+    outlookEmail: null,
+    outlookName: null,
+    outlookExpiresAt: null,
+    outlookId: null,
+  }, { merge: true });
+}
+
+export async function updateJobProfile(jobId: string, payload: any): Promise<void> {
+  const db = getClientFirestore();
+  const ref = doc(db, "jobProfiles", jobId);
+  await updateDoc(ref, { ...payload, updatedAt: new Date() });
 }

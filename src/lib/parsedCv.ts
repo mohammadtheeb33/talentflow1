@@ -38,5 +38,10 @@ export interface ParsedCvResult {
   };
   detectedLanguage?: string;
   inferredTargetRole?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    model: string;
+  };
 }
 

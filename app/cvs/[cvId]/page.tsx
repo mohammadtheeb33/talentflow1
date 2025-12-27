@@ -38,14 +38,21 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
+  Award,
+  BookOpen,
   AlertTriangle,
   BrainCircuit,
   Lightbulb,
+  Quote,
+  Mail,
+  Phone,
+  Linkedin,
 } from "lucide-react";
+import { toast } from "sonner";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import ScoreCard from "@/components/ScoreCard";
-import { scoreCv, type JobProfile as EngineJobProfile, type EducationLevel } from "@/lib/scoreEngine";
+import { evaluateCv, type JobProfile as EngineJobProfile, type EducationLevel } from "@/lib/scoreEngine";
 
 type JobProfile = {
   id: string;
@@ -113,7 +120,25 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
               setError("غير مصرح: لا تملك هذه السيرة الذاتية");
               return;
             }
-            setCv({ id: cvId, ...data });
+            
+            // Intelligent State Merge (Fixes flickering/wiping issue)
+            setCv((prev: any) => {
+              const newData = { id: cvId, ...data };
+              
+              // If incoming data lacks critical AI fields that we already have locally,
+              // PRESERVE the local version. This happens when Firestore update is lagging
+              // behind a local optimistic update or if the backend temporarily returns partial data.
+              if (prev) {
+                if (!newData.score && prev.score) newData.score = prev.score;
+                if (!newData.scoreExperienceYears && prev.scoreExperienceYears) newData.scoreExperienceYears = prev.scoreExperienceYears;
+                if (!newData.aiAnalysis && prev.aiAnalysis) newData.aiAnalysis = prev.aiAnalysis;
+                if (!newData.jobProfileId && prev.jobProfileId) newData.jobProfileId = prev.jobProfileId;
+                if (!newData.jobTitle && prev.jobTitle) newData.jobTitle = prev.jobTitle;
+                if (!newData.scoreBreakdown && prev.scoreBreakdown) newData.scoreBreakdown = prev.scoreBreakdown;
+              }
+              return newData;
+            });
+            
             setSelectedJobId(String((data as any)?.jobProfileId || ""));
 
             // Resolve PDF URL when relevant fields change
@@ -123,14 +148,29 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
               const companyId: string | undefined = (current as any)?.companyId;
               const candidates: string[] = [];
               if (sp) { candidates.push(sp); if (mounted) setPdfRefPath(sp); }
+              
+              // Standard path (Fixed upload flow)
+              candidates.push(`cvs/${cvId}/original/${fname}`);
+
               // Fallbacks based on server ingestion conventions
               if (companyId) candidates.push(`companies/${companyId}/cvs/${cvId}/original/${fname}`);
               candidates.push(`unscoped/cvs/${cvId}/original/${fname}`);
+              
               for (const p of candidates) {
                 try {
                   const url = await getCvDownloadUrl(p);
-                  if (url && mounted) { setPdfUrl(url); setPdfRefPath(p); return; }
-                } catch (_) { /* try next candidate */ }
+                  if (url && mounted) { 
+                    setPdfUrl(url); 
+                    setPdfRefPath(p); 
+                    setPdfLoadError(null);
+                    return; 
+                  }
+                } catch (err: any) {
+                   // If we have an explicit storage path and it fails with permission denied, report it
+                   if (sp && p === sp && (err?.code === 'storage/unauthorized' || err?.message?.includes('403'))) {
+                      if (mounted) setPdfLoadError("Permission denied: You do not have access to this file.");
+                   }
+                }
               }
               // As a last resort, list known prefixes and pick first file
               try {
@@ -240,19 +280,28 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
     return () => { active = false; if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); };
   }, [pdfUrl, pdfRefPath]);
 
-  async function updateJobProfile() {
+  async function updateJobProfile(newJobId: string) {
     if (!cvId) return;
+    
+    // Optimistic update
+    setSelectedJobId(newJobId);
+    
+    const toastId = toast.loading("Updating target role...");
+    
     try {
       setSaving(true);
       setError(null);
       const db = getClientFirestore();
       const ref = doc(db, "cvs", cvId);
       // عند تغيير ملف الوظيفة، خزِّن أيضاً عنوانه (إن وُجد) وأعد الحالة إلى pending لتحفيز التقييم
-      const selected = jobs.find((j) => j.id === selectedJobId);
+      const selected = jobs.find((j) => j.id === newJobId);
       const jobTitle = selected ? (selected.title || selected.id) : undefined;
-      await updateDoc(ref, { jobProfileId: selectedJobId || null, jobTitle: jobTitle || null, status: "pending" });
+      await updateDoc(ref, { jobProfileId: newJobId || null, jobTitle: jobTitle || null, status: "pending" });
+      
+      toast.success("Role updated successfully!", { id: toastId });
       router.refresh();
     } catch (e: any) {
+      toast.error(e?.message || "Failed to update role", { id: toastId });
       setError(e?.message || "تعذّر تحديث ملف الوظيفة");
     } finally {
       setSaving(false);
@@ -324,6 +373,14 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
 
   async function forceScoreNow() {
     if (!cvId) return;
+    
+    // GUARD: Prevent re-scoring if status is finalized
+    const currentStatus = String(cv?.status || "").toLowerCase();
+    if (["rejected", "strong_fit", "accepted", "not_a_fit", "not a fit", "strong fit", "hired", "interviewed", "offer_sent"].includes(currentStatus)) {
+      toast.error(`Cannot rescore a finalized candidate (${cv?.status}). Change status to 'Pending' first.`);
+      return;
+    }
+
     try {
       setStatusUpdating(true);
       setError(null);
@@ -404,22 +461,6 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       } catch (_) {
         setError(e?.message || "تعذّر تنفيذ التقييم الآن");
       }
-    } finally {
-      setStatusUpdating(false);
-    }
-  }
-
-  async function changeStatus(newStatus: string) {
-    if (!cvId) return;
-    try {
-      setStatusUpdating(true);
-      const db = getClientFirestore();
-      const ref = doc(db, "cvs", cvId);
-      await updateDoc(ref, { status: newStatus, updatedAt: serverTimestamp() });
-      await addDoc(collection(db, "cvs", cvId, "events"), { type: `status_${newStatus}`, createdAt: serverTimestamp() });
-      router.refresh();
-    } catch (e: any) {
-      setError(e?.message || "تعذّر تغيير الحالة");
     } finally {
       setStatusUpdating(false);
     }
@@ -512,6 +553,13 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       const ref = doc(db, "cvs", cvId);
       const snap = await getDoc(ref);
       const data = snap.exists() ? snap.data() : cv;
+
+      // GUARD: Prevent re-scoring if status is finalized
+      const currentStatus = String((data as any)?.status || "").toLowerCase();
+      if (["rejected", "strong_fit", "accepted", "not_a_fit", "not a fit", "strong fit", "hired", "interviewed", "offer_sent"].includes(currentStatus)) {
+        console.log(`Skipping local scoring for finalized status: ${currentStatus}`);
+        return;
+      }
       const parsed = (data as any)?.parsed;
       if (!parsed) throw new Error("لا توجد بيانات مستخرجة parsed");
 
@@ -537,15 +585,6 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
           minYearsExp: Math.min(5, Math.max(1, (parsed?.experience?.length || 0))),
           educationLevel: (Array.isArray(parsed?.education) && parsed.education.length > 0) ? "bachelor" : "none",
           title: (data as any)?.jobTitle || "General Role",
-          // Align weights with scoring engine keys
-          weights: { 
-            roleFit: 0.05,
-            skillsQuality: 0.5, 
-            experienceQuality: 0.3, 
-            projectsImpact: 0.05, 
-            languageClarity: 0.05, 
-            atsFormat: 0.05 
-          }
         };
         jobId = "auto";
       } else {
@@ -556,70 +595,75 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
           optionalSkills: Array.isArray(jobData.optionalSkills) ? jobData.optionalSkills : [],
           minYearsExp: Number(jobData.minYearsExp) || 0,
           educationLevel: (jobData.educationLevel as EducationLevel) || "none",
-          weights: jobData.weights
         };
       }
 
       // Run Scoring Engine
-      console.log("Starting scoreCv with:", { parsedKeys: Object.keys(parsed), jobTitle: engineJob.title });
-      const scoreResult = scoreCv(parsed, engineJob);
-      console.log("scoreCv result:", scoreResult);
+      console.log("Starting evaluateCv with:", { textLength: ((data as any)?.text || "").length, jobTitle: engineJob.title });
+      
+      // Use raw text if available, otherwise fallback to stringified parsed data
+      const rawText = (data as any)?.text || (data as any)?.content || JSON.stringify(parsed);
+      
+      const auth = getClientAuth();
+      const uid = auth.currentUser?.uid;
+      
+      const scoreResult = await evaluateCv(rawText, engineJob, { userId: uid, cvId: cvId });
+      console.log("evaluateCv result:", scoreResult);
 
       if (!scoreResult) {
         throw new Error("Internal Error: Scoring engine returned no result");
       }
 
       // Update Local State
-      const newScoreBreakdown = scoreResult.breakdown || {
-        roleFit: { score: 0, keywordMatch: 0, seniorityMatch: 0 },
-        skillsQuality: { score: 0, coverage: 0, depth: 0, recency: 0 },
-        experienceQuality: { score: 0, relevance: 0, duration: 0, consistency: 0 },
-        projectsImpact: { score: 0, presence: 0, details: 0, results: 0 },
-        languageClarity: { score: 0, grammar: 0, clarity: 0 },
-        atsFormat: { score: 0, sections: 0, readability: 0, layout: 0 }
-      };
-      const totalScore = typeof scoreResult.score === 'number' ? scoreResult.score : 0;
+      const newScoreBreakdown = scoreResult.breakdown;
+      let totalScore = scoreResult.score;
+
+      // Robust score sanitization
+      if (typeof totalScore === 'string') {
+         const match = (totalScore as string).match(/(\d+(\.\d+)?)/);
+         totalScore = match ? parseFloat(match[0]) : 0;
+      } else if (typeof totalScore === 'number') {
+         if (isNaN(totalScore)) totalScore = 0;
+      } else {
+         totalScore = 0;
+      }
+
       const riskFlags = scoreResult.riskFlags || [];
 
-      // Generate Analysis Text from Engine Results
-      let analysisText = `Candidate scored ${totalScore}/100 based on the target role '${engineJob.title || "General"}'.\n\n`;
-      
-      // Skills
-      const matchedCount = (scoreResult.matchedSkills || []).filter(m => m.score > 50).length;
-      analysisText += `• Skills Quality (${newScoreBreakdown.skillsQuality.score}%): Found ${matchedCount} matching skills out of ${(engineJob.requiredSkills || []).length} required.\n`;
-      const strongMatches = (scoreResult.matchedSkills || []).filter(m => m.score > 80).map(m => m.skill);
-      if (strongMatches.length > 0) analysisText += `  Matches: ${strongMatches.slice(0, 5).join(", ")}${strongMatches.length > 5 ? ", ..." : ""}.\n`;
-      
-      // Experience
-      analysisText += `• Experience Quality (${newScoreBreakdown.experienceQuality.score}%): ${scoreResult.experienceYears || 0} years total, ${scoreResult.relevantExperienceYears || 0} years relevant.\n`;
-      
-      // Role Fit
-      analysisText += `• Role Fit (${newScoreBreakdown.roleFit.score}%): Education level identified as '${scoreResult.educationDetected || "none"}'.\n`;
-
-      // Improvements & Risks
-      let improvementsText = (scoreResult.reasons || []).map(r => `• ${r}`).join("\n");
-      if (riskFlags.length > 0) {
-        improvementsText += "\n\nRisk Flags:\n" + riskFlags.map(f => `• [${f.severity.toUpperCase()}] ${f.message}`).join("\n");
+      // Generate Analysis Text from Engine Results (Human Verdict)
+      let analysisText = scoreResult.explanation.join("\n\n");
+      if (!analysisText) {
+        analysisText = `Candidate scored ${totalScore}/100. AI did not provide a detailed summary.`;
       }
-      if (!improvementsText) improvementsText = "No major improvements detected. The profile is well-aligned with the target role.";
+      
+      // Improvements & Risks
+      let improvementsText = "";
+      if (riskFlags.length > 0) {
+        improvementsText += "Risk Flags:\n" + riskFlags.map(f => `• ${f.message}`).join("\n");
+      }
 
       // Persist to Firestore
       const updatePayload: any = {
         score: totalScore,
         scoreBreakdown: newScoreBreakdown,
-        scoreDetailedBreakdown: newScoreBreakdown,
-        scoreRiskFlags: riskFlags,
-        scoreExperienceYears: scoreResult.experienceYears || 0,
-        scoreEducationDetected: scoreResult.educationDetected || "none",
+        scoreDetailedBreakdown: scoreResult.detailedBreakdown,
+        scoreRiskFlags: riskFlags, // Save Array of RiskFlag objects
+        scoreExperienceYears: scoreResult.relevantExperienceYears || 0,
+        scoreEducationDetected: (engineJob.educationLevel as string) || "none",
         scoreInferredSkills: scoreResult.inferredSkills || [],
-        aiAnalysis: analysisText,
+        scoreSkillsAnalysis: scoreResult.skillsAnalysis || { directMatches: [], inferredMatches: [], missing: [] },
+        aiAnalysis: analysisText, // This is the Human Verdict
         improvements: improvementsText,
+        extractedContact: scoreResult.extractedContact, // Save extracted contact info
         updatedAt: serverTimestamp(),
       };
       
       // If we used a specific job profile, link it
       if (jobId && jobId !== "auto") {
         updatePayload.jobProfileId = jobId;
+        updatePayload.jobId = jobId; // Alias
+        updatePayload.jobTitle = engineJob.title || "Unknown Job";
+        updatePayload.targetRole = engineJob.title || "Unknown Role";
       }
 
       await updateDoc(ref, updatePayload);
@@ -635,17 +679,6 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       setError("فشل التقييم المحلي: " + (err as Error).message);
     }
   }
-
-  const statusColors = {
-    uploaded: "bg-slate-100 text-slate-700 border-slate-200",
-    pending: "bg-amber-50 text-amber-700 border-amber-200",
-    scanned: "bg-blue-50 text-blue-700 border-blue-200",
-    parsed: "bg-indigo-50 text-indigo-700 border-indigo-200",
-    scored: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    accepted: "bg-green-50 text-green-700 border-green-200",
-    rejected: "bg-red-50 text-red-700 border-red-200",
-    scan_failed: "bg-red-50 text-red-700 border-red-200",
-  };
 
   return (
     <div className="min-h-screen bg-gray-50/50 pb-12">
@@ -670,67 +703,30 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
               </div>
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-bold text-gray-900">
-                  {cv?.parsed?.name || cv?.name || "Loading..."}
+                  {!cv ? "Loading..." : (cv.parsed?.name || cv.name || cv.parsed?.email || cv.email || "Unnamed Candidate")}
                 </h1>
-                {cv?.status && (
-                  <span className={cn(
-                    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize",
-                    statusColors[cv.status as keyof typeof statusColors] || "bg-gray-100 text-gray-800"
-                  )}>
-                    {cv.status}
-                  </span>
-                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center rounded-lg border bg-white p-1 shadow-sm">
-              <button 
-                onClick={triggerDownload} 
-                disabled={!pdfUrl}
-                className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                title="Download Original PDF"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Download</span>
-              </button>
-              <div className="mx-1 h-4 w-px bg-gray-200" />
-              <button 
-                onClick={rescanCv} 
-                disabled={statusUpdating}
-                className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                title="Rescan Document"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", statusUpdating && "animate-spin")} />
-                <span className="hidden sm:inline">Rescan</span>
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <select
-                className="h-9 rounded-lg border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                value={cv?.status || ""}
-                onChange={(e) => changeStatus(e.target.value)}
-              >
-                <option value="uploaded">Uploaded</option>
-                <option value="pending">Pending</option>
-                <option value="scanned">Scanned</option>
-                <option value="parsed">Parsed</option>
-                <option value="scored">Scored</option>
-                <option value="accepted">Accepted</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              
-              <button 
-                onClick={forceScoreNow} 
-                disabled={statusUpdating}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-              >
-                <BrainCircuit className="h-4 w-4" />
-                <span>Evaluate</span>
-              </button>
-            </div>
+            <button 
+              onClick={forceScoreNow} 
+              disabled={statusUpdating}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-zinc-900 px-5 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 disabled:opacity-50 transition-all"
+            >
+              {statusUpdating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>AI is reading...</span>
+                </>
+              ) : (
+                <>
+                  <BrainCircuit className="h-4 w-4" />
+                  <span>Evaluate</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -744,61 +740,60 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
         </div>
       )}
 
-      <main className="mx-auto mt-8 grid max-w-7xl grid-cols-1 gap-8 px-6 lg:grid-cols-12">
-        {/* Left Column: PDF Viewer */}
-        <div className="lg:col-span-7 xl:col-span-8">
-          <div className="sticky top-24 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">Original Resume</span>
-              </div>
-              <div className="flex items-center gap-1 rounded-md border bg-white p-1 shadow-sm">
-                <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="p-1.5 text-gray-500 hover:bg-gray-50 hover:text-gray-900 rounded">
-                  <ZoomOut className="h-3.5 w-3.5" />
-                </button>
-                <span className="min-w-[3rem] text-center text-xs font-medium text-gray-600">{zoom}%</span>
-                <button onClick={() => setZoom(z => Math.min(200, z + 10))} className="p-1.5 text-gray-500 hover:bg-gray-50 hover:text-gray-900 rounded">
-                  <ZoomIn className="h-3.5 w-3.5" />
-                </button>
-                <div className="mx-1 h-3 w-px bg-gray-200" />
-                {pdfUrl && (
-                  <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-gray-500 hover:bg-gray-50 hover:text-gray-900 rounded" title="Open in new tab">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                )}
-              </div>
+      <main className="flex h-[calc(100vh-64px)] overflow-hidden">
+        {/* Left Panel: PDF Viewer */}
+        <div className="w-[55%] h-full bg-zinc-900 overflow-hidden relative flex flex-col border-r border-gray-200">
+          <div className="flex items-center justify-between border-b border-zinc-700 bg-zinc-800 px-4 py-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-300">Original Resume</span>
             </div>
-            
-            <div className="relative h-[calc(100vh-12rem)] min-h-[600px] w-full bg-gray-100/50">
-              {pdfBlobUrl || pdfUrl ? (
-                <div className="h-full w-full overflow-auto p-4 flex justify-center">
-                  <div style={{ width: `${zoom}%`, transition: 'width 0.2s' }} className="shadow-lg">
-                    <iframe 
-                      src={pdfBlobUrl || pdfUrl || undefined} 
-                      className="h-[calc(100vh-14rem)] min-h-[800px] w-full rounded bg-white" 
-                      title="PDF Viewer"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-500">
-                  <div className="rounded-full bg-gray-100 p-4">
-                    <FileText className="h-8 w-8 text-gray-400" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-gray-900">No Document Available</p>
-                    {pdfLoading && <p className="text-xs mt-1">Loading document from secure storage...</p>}
-                    {pdfLoadError && <p className="text-xs text-red-600 mt-1">{pdfLoadError}</p>}
-                  </div>
-                </div>
+            <div className="flex items-center gap-1 rounded-md border border-zinc-600 bg-zinc-700 p-1 shadow-sm">
+              <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="p-1.5 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-100 rounded transition-colors">
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <span className="min-w-[3rem] text-center text-xs font-medium text-zinc-300">{zoom}%</span>
+              <button onClick={() => setZoom(z => Math.min(200, z + 10))} className="p-1.5 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-100 rounded transition-colors">
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+              <div className="mx-1 h-3 w-px bg-zinc-600" />
+              {pdfUrl && (
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-100 rounded transition-colors" title="Open in new tab">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
               )}
             </div>
           </div>
+            
+          <div className="relative flex-1 w-full bg-zinc-900 overflow-hidden">
+            {pdfBlobUrl || pdfUrl ? (
+              <div className="h-full w-full overflow-auto p-8 flex justify-center custom-scrollbar">
+                <div style={{ width: `${zoom}%`, transition: 'width 0.2s' }} className="shadow-2xl">
+                  <iframe 
+                    src={pdfBlobUrl || pdfUrl || undefined} 
+                    className="min-h-[calc(100vh-10rem)] w-full bg-white rounded-sm" 
+                    title="PDF Viewer"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-500">
+                <div className="rounded-full bg-zinc-800 p-4">
+                  <FileText className="h-8 w-8 text-zinc-600" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-zinc-400">No Document Available</p>
+                  {pdfLoading && <p className="text-xs mt-1 text-zinc-500">Loading document from secure storage...</p>}
+                  {pdfLoadError && <p className="text-xs text-red-400 mt-1">{pdfLoadError}</p>}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right Column: Analysis & Details */}
-        <div className="space-y-6 lg:col-span-5 xl:col-span-4">
+        {/* Right Panel: Analysis & Details */}
+        <div className="w-[45%] h-full overflow-y-auto bg-white p-6 pb-20 custom-scrollbar">
+          <div className="space-y-6">
           {/* Tabs */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
             <div className="border-b border-gray-100 px-1">
@@ -832,7 +827,8 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
                       <select
                         className="flex-1 rounded-md border-indigo-200 bg-white py-1.5 text-sm text-gray-700 focus:border-indigo-500 focus:ring-indigo-500"
                         value={selectedJobId}
-                        onChange={(e) => setSelectedJobId(e.target.value)}
+                        onChange={(e) => updateJobProfile(e.target.value)}
+                        disabled={saving}
                       >
                         <option value="">Select a job profile...</option>
                         {jobs.map((j) => (
@@ -841,38 +837,61 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
                           </option>
                         ))}
                       </select>
-                      <button 
-                        onClick={updateJobProfile} 
-                        disabled={saving}
-                        className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        {saving ? "..." : "Save"}
-                      </button>
                     </div>
                   </div>
 
                   <ScoreCard cv={cv} />
 
-                  {/* Contact Info */}
+                  {/* Recruiter Notes (AI Analysis) */}
+                  {cv?.aiAnalysis && (
+                    <div className="relative rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white p-5 shadow-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                           <BrainCircuit className="h-5 w-5" />
+                         </div>
+                         <h3 className="font-semibold text-gray-900">Recruiter Notes</h3>
+                      </div>
+                      
+                      <div className="relative pl-4">
+                        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-full bg-indigo-200"></div>
+                        <Quote className="absolute -left-1.5 -top-2 h-4 w-4 bg-white text-indigo-300" />
+                        <p className="whitespace-pre-wrap text-sm italic leading-relaxed text-gray-700 pt-1">
+                          "{cv.aiAnalysis}"
+                        </p>
+                      </div>
+                      
+                      <div className="mt-3 flex items-center justify-end border-t border-indigo-50 pt-2">
+                        <span className="text-xs font-medium text-indigo-400 flex items-center gap-1">
+                          Generated by AI Recruiter <BrainCircuit className="h-3 w-3" />
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Contact Info (Identity Card) */}
                   <div className="space-y-3">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                       <User className="h-4 w-4 text-gray-500" />
-                      Contact Details
+                      Identity Card
                     </h3>
                     <div className="grid gap-2 text-sm">
-                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-gray-50 p-2.5">
+                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-white p-3 shadow-sm">
                         <span className="text-gray-500">Email</span>
-                        <span className="font-medium text-gray-900 select-all">{cv?.parsed?.email || cv?.email || "N/A"}</span>
+                        <span className="font-medium text-gray-900 select-all">
+                          {cv?.extractedContact?.email || cv?.parsed?.email || cv?.email || <span className="text-red-400">Not Found</span>}
+                        </span>
                       </div>
-                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-gray-50 p-2.5">
+                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-white p-3 shadow-sm">
                         <span className="text-gray-500">Phone</span>
-                        <span className="font-medium text-gray-900 select-all">{cv?.parsed?.phone || "N/A"}</span>
+                        <span className="font-medium text-gray-900 select-all">
+                          {cv?.extractedContact?.phone || cv?.parsed?.phone || <span className="text-red-400">Not Found</span>}
+                        </span>
                       </div>
-                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-gray-50 p-2.5">
+                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-white p-3 shadow-sm">
                         <span className="text-gray-500">LinkedIn</span>
-                        {cv?.parsed?.linkedin ? (
+                        {cv?.extractedContact?.linkedin || cv?.parsed?.linkedin ? (
                           <a 
-                            href={cv.parsed.linkedin} 
+                            href={cv?.extractedContact?.linkedin || cv?.parsed?.linkedin} 
                             target="_blank" 
                             rel="noopener noreferrer" 
                             className="flex items-center gap-1 font-medium text-indigo-600 hover:underline"
@@ -880,31 +899,83 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
                             View Profile <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : (
-                          <span className="text-gray-400">Not found</span>
+                          <span className="text-red-400">Not Found</span>
                         )}
+                      </div>
+                      <div className="flex items-start justify-between rounded-md border border-gray-100 bg-white p-3 shadow-sm">
+                        <span className="text-gray-500">Experience</span>
+                        <span className="font-bold text-gray-900">
+                          {cv?.scoreExperienceYears !== undefined ? `${cv.scoreExperienceYears} Years` : "Calculating..."}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Skills */}
-                  <div>
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                      <Lightbulb className="h-4 w-4 text-gray-500" />
-                      Detected Skills
+                  {/* Skills Analysis */}
+                  <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                      <Lightbulb className="h-4 w-4" />
+                      Smart Skill Match
                     </h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {Array.isArray(cv?.parsed?.skills) && cv.parsed.skills.length > 0 ? (
-                        cv.parsed.skills.map((s: string, idx: number) => (
-                          <span 
-                            key={idx} 
-                            className="inline-flex items-center rounded-md bg-white px-2 py-1 text-xs font-medium text-gray-700 border border-gray-200 shadow-sm"
-                          >
-                            {s}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-gray-500 italic">No skills detected yet.</span>
-                      )}
+
+                    <div className="space-y-4">
+                      {/* Direct Matches */}
+                      <div>
+                        <span className="text-sm font-medium text-gray-700 block mb-2">Direct Matches</span>
+                        {(cv?.scoreSkillsAnalysis?.directMatches?.length || 0) > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {cv.scoreSkillsAnalysis.directMatches.map((s: string, idx: number) => (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 border border-emerald-200"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 italic">None</span>
+                        )}
+                      </div>
+
+                      {/* Inferred Matches */}
+                      <div>
+                        <span className="text-sm font-medium text-gray-700 block mb-2">Inferred / Related</span>
+                        {(cv?.scoreSkillsAnalysis?.inferredMatches?.length || 0) > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {cv.scoreSkillsAnalysis.inferredMatches.map((item: any, idx: number) => (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 border border-amber-200"
+                                title={item.reason}
+                              >
+                                {item.candidateSkill} <span className="opacity-75 ml-1 text-[10px]">(matches {item.jobRequirement})</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 italic">None</span>
+                        )}
+                      </div>
+
+                      {/* Missing Matches */}
+                      <div>
+                        <span className="text-sm font-medium text-gray-700 block mb-2">Missing</span>
+                        {(cv?.scoreSkillsAnalysis?.missing?.length || 0) > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {cv.scoreSkillsAnalysis.missing.map((s: string, idx: number) => (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500 border border-gray-200 decoration-dotted underline decoration-gray-300"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 italic">None</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1001,6 +1072,36 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
                       )}
                     </ul>
                   </div>
+
+                  {/* Certifications */}
+                  <div className="space-y-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                      <Award className="h-4 w-4 text-gray-500" />
+                      Certifications
+                    </h3>
+                    <ul className="space-y-3">
+                      {Array.isArray(cv?.parsed?.certifications) && cv.parsed.certifications.length > 0 ? (
+                        cv.parsed.certifications.map((c: string, idx: number) => (
+                          <li key={idx} className="rounded-md border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600">
+                            {c}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-sm text-gray-500 italic">No certifications found.</li>
+                      )}
+                    </ul>
+                  </div>
+
+                  {/* Courses */}
+                  <div className="space-y-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                      <BookOpen className="h-4 w-4 text-gray-500" />
+                      Courses
+                    </h3>
+                    <div className="rounded-md border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">
+                       {cv?.parsed?.courses || <span className="italic text-gray-400">No courses found.</span>}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1086,6 +1187,7 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
                 )}
               </div>
             </div>
+          </div>
           </div>
         </div>
       </main>

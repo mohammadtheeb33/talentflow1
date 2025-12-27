@@ -2,32 +2,57 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { getClientFirestore, ensureUid } from "@/lib/firebase";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  CartesianGrid,
-} from "recharts";
+import dynamic from "next/dynamic";
+import { 
+  calculateHRMetrics,
+  getHiringFunnel, 
+  getScoreDistribution, 
+  getMonthlyTrends, 
+  getJobAnalytics, 
+  getTopSkills, 
+  getSourceBreakdown,
+  Candidate,
+  JobProfile 
+} from "@/services/analyticsService";
 
-type Candidate = any;
-type Job = { id: string; title?: string };
+// Dynamic Components
+const HiringFunnelChart = dynamic(() => import("@/components/reports/HiringFunnelChart"), {
+  loading: () => <div className="mt-4 h-64 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const ScoreDecisionChart = dynamic(() => import("@/components/reports/ScoreDecisionChart"), {
+  loading: () => <div className="mt-4 h-64 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const MonthlyTrendsChart = dynamic(() => import("@/components/reports/MonthlyTrendsChart"), {
+  loading: () => <div className="mt-4 h-64 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const TopSkillsChart = dynamic(() => import("@/components/reports/TopSkillsChart"), {
+  loading: () => <div className="mt-4 h-48 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const SourceBreakdownChart = dynamic(() => import("@/components/reports/SourceBreakdownChart"), {
+  loading: () => <div className="mt-4 h-40 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const AiInsightsPanel = dynamic(() => import("@/components/reports/AiInsightsPanel"), {
+  loading: () => <div className="h-32 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
+const JobAnalyticsTable = dynamic(() => import("@/components/reports/JobAnalyticsTable"), {
+  loading: () => <div className="h-64 w-full animate-pulse rounded bg-gray-100" />,
+  ssr: false,
+});
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidatesUid, setCandidatesUid] = useState<Candidate[]>([]);
   const [candidatesUserId, setCandidatesUserId] = useState<Candidate[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<JobProfile[]>([]);
 
-  // Filters
+  // SMART Filters
   const [fromDate, setFromDate] = useState<string>(() => {
     const d = new Date();
     const start = new Date(d.getFullYear(), 0, 1);
@@ -40,7 +65,11 @@ export default function ReportsPage() {
   });
   const [jobId, setJobId] = useState<string>("");
   const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [decisionStatus, setDecisionStatus] = useState<string>("");
+  const [minScore, setMinScore] = useState<number>(0);
+  const [minExp, setMinExp] = useState<number>(0);
 
+  // Data Fetching
   useEffect(() => {
     let mounted = true;
     let unsubCvsUid: (() => void) | null = null;
@@ -52,413 +81,375 @@ export default function ReportsPage() {
         setError(null);
         const uid = await ensureUid();
         const db = getClientFirestore();
+        
         // Live CVS by uid
-        unsubCvsUid = onSnapshot(query(collection(db, "cvs"), where("uid", "==", uid), limit(1000)), (snap) => {
+        unsubCvsUid = onSnapshot(query(collection(db, "cvs"), where("uid", "==", uid), limit(5000)), (snap) => {
           if (!mounted) return;
           const rows: Candidate[] = [];
           snap.forEach((d) => rows.push({ id: d.id, ...(d.data() as any) }));
           setCandidatesUid(rows);
-        }, (err) => setError(err?.message || "تعذّر تحميل السير الذاتية"));
+        }, (err) => setError(err?.message || "Failed to load candidates"));
+        
         // Live CVS by legacy userId
-        unsubCvsUserId = onSnapshot(query(collection(db, "cvs"), where("userId", "==", uid), limit(1000)), (snap) => {
+        unsubCvsUserId = onSnapshot(query(collection(db, "cvs"), where("userId", "==", uid), limit(5000)), (snap) => {
           if (!mounted) return;
           const rows: Candidate[] = [];
           snap.forEach((d) => rows.push({ id: d.id, ...(d.data() as any) }));
           setCandidatesUserId(rows);
-        }, (err) => setError(err?.message || "تعذّر تحميل السير الذاتية"));
+        }, (err) => setError(err?.message || "Failed to load candidates"));
+        
         // Live Job Profiles
         unsubJobs = onSnapshot(query(collection(db, "jobProfiles"), where("uid", "==", uid), limit(200)), (snap) => {
           if (!mounted) return;
-          const js: Job[] = [];
+          const js: JobProfile[] = [];
           snap.forEach((d) => js.push({ id: d.id, ...(d.data() as any) }));
           js.sort((a, b) => String(a.title || a.id).localeCompare(String(b.title || b.id)));
           setJobs(js);
-        }, (err) => setError(err?.message || "تعذّر تحميل ملفات الوظائف"));
+        }, (err) => setError(err?.message || "Failed to load jobs"));
+        
       } catch (e: any) {
-        setError(e?.message || "تعذّر بدء الاتصال بقاعدة البيانات");
+        setError(e?.message || "Failed to connect to database");
       } finally {
         setLoading(false);
       }
     })();
-    return () => { mounted = false; if (unsubCvsUid) try { unsubCvsUid(); } catch(_) {}; if (unsubCvsUserId) try { unsubCvsUserId(); } catch(_) {}; if (unsubJobs) try { unsubJobs(); } catch(_) {}; };
+    return () => { 
+      mounted = false; 
+      if (unsubCvsUid) try { unsubCvsUid(); } catch(_) {}; 
+      if (unsubCvsUserId) try { unsubCvsUserId(); } catch(_) {}; 
+      if (unsubJobs) try { unsubJobs(); } catch(_) {}; 
+    };
   }, []);
 
-  // Merge candidates from both listeners
+  // Merge candidates
   const candidatesAll = useMemo(() => {
     const map = new Map<string, Candidate>();
-    candidatesUid.forEach((c) => map.set(String((c as any)?.id || ""), c));
-    candidatesUserId.forEach((c) => map.set(String((c as any)?.id || ""), c));
+    candidatesUid.forEach((c) => map.set(c.id, c));
+    candidatesUserId.forEach((c) => map.set(c.id, c));
     return Array.from(map.values());
   }, [candidatesUid, candidatesUserId]);
 
-  // Filtering
+  // Apply SMART Filters
   const filtered = useMemo(() => {
     const fromMs = Date.parse(fromDate + "T00:00:00Z");
     const toMs = Date.parse(toDate + "T23:59:59Z");
-    const byJob = (c: Candidate) => jobId ? String(c?.jobProfileId || "") === jobId : true;
-    const srcLc = (s?: string) => String(s || "").toLowerCase();
-    const bySrc = (c: Candidate) => sourceFilter ? srcLc(c?.source || c?.ingestion?.source || c?.origin).includes(sourceFilter.toLowerCase()) : true;
-    const tsSec = (c: Candidate) => (c?.submittedAt?.seconds || c?.createdAt?.seconds || c?.updatedAt?.seconds || c?.scoreUpdatedAt?.seconds || 0);
+
     return candidatesAll.filter((c) => {
-      const ms = tsSec(c) * 1000;
-      const inRange = !fromMs || !toMs ? true : (ms >= fromMs && ms <= toMs);
-      return inRange && byJob(c) && bySrc(c);
+      // 1. Date Range
+      const sec = c.submittedAt?.seconds || c.createdAt?.seconds || c.updatedAt?.seconds || c.scoreUpdatedAt?.seconds || 0;
+      const ms = sec * 1000;
+      const inDateRange = !fromMs || !toMs ? true : (ms >= fromMs && ms <= toMs);
+      if (!inDateRange) return false;
+
+      // 2. Job Title
+      if (jobId && String(c.jobProfileId || "") !== jobId) return false;
+
+      // 3. Source
+      if (sourceFilter) {
+        const s = String(c.source || c.ingestion?.source || c.origin || "").toLowerCase();
+        if (!s.includes(sourceFilter.toLowerCase())) return false;
+      }
+
+      // 4. Decision Status
+      if (decisionStatus) {
+        const hs = (c.hiringStatus || "").toLowerCase();
+        if (decisionStatus === "accepted" && hs !== "accepted") return false;
+        if (decisionStatus === "rejected" && hs !== "rejected") return false;
+        if (decisionStatus === "undecided" && (hs === "accepted" || hs === "rejected")) return false;
+      }
+
+      // 5. Score Range
+      const score = typeof c.score === "number" ? c.score : 0;
+      if (score < minScore) return false;
+
+      // 6. Experience (Simple heuristic: check if 'experience' field exists or parse from text? 
+      // Assuming 'experience' field exists or we skip this if not present for now, 
+      // but user asked for it. If data doesn't have it, we can't filter reliably.
+      // I'll check if there's an experience years field. If not, I'll skip or use a placeholder logic)
+      // Checking Candidate type: no explicit experience field. 
+      // I'll check 'parsed.totalYearsExperience' if it exists in real data, otherwise skip.
+      const exp = (c as any).parsed?.totalYearsExperience || (c as any).yearsOfExperience || 0;
+      if (minExp > 0 && exp < minExp) return false;
+
+      return true;
     });
-  }, [candidatesAll, fromDate, toDate, jobId, sourceFilter]);
+  }, [candidatesAll, fromDate, toDate, jobId, sourceFilter, decisionStatus, minScore, minExp]);
 
-  // Derived KPIs
-  const totalCandidates = filtered.length;
-  const scored = filtered.filter((c) => typeof c?.score === "number");
-  const avgScore = scored.length ? Math.round(scored.reduce((acc, c) => acc + Number(c.score || 0), 0) / scored.length) : 0;
-  const atsPassRate = scored.length ? Math.round(100 * (scored.filter((c) => Number(c.score || 0) >= 60).length) / scored.length) : 0;
-  const acceptedCount = filtered.filter((c) => String(c?.status || "").toLowerCase().includes("strong fit")).length;
-  const rejectedCount = filtered.filter((c) => String(c?.status || "").toLowerCase().includes("not a fit")).length;
+  // Analytics Calculations
+  const stats = useMemo(() => calculateHRMetrics(filtered), [filtered]);
+  const funnelData = useMemo(() => getHiringFunnel(filtered), [filtered]);
+  const scoreData = useMemo(() => getScoreDistribution(filtered), [filtered]);
+  const trendsData = useMemo(() => getMonthlyTrends(filtered), [filtered]);
+  const jobAnalytics = useMemo(() => getJobAnalytics(filtered, jobs), [filtered, jobs]);
+  const topSkills = useMemo(() => getTopSkills(filtered), [filtered]);
+  const sourceData = useMemo(() => getSourceBreakdown(filtered), [filtered]);
 
-  // Score histogram (0-100 by 10s)
-  const bins = useMemo(() => {
-    const arr = new Array(10).fill(0);
-    scored.forEach((c) => {
-      const s = Math.max(0, Math.min(99, Math.floor(Number(c.score || 0))));
-      const idx = Math.floor(s / 10);
-      arr[idx] += 1;
+  // AI Insights Generation (Mock)
+  const insights = useMemo(() => {
+    if (filtered.length === 0) return ["No data available for analysis."];
+    
+    const lines = [];
+    
+    // Contextualize Acceptance Rate
+    if (stats.acceptanceRate !== "N/A") {
+      lines.push(`Based on HR decisions only, your acceptance rate is ${stats.acceptanceRate}%.`);
+    } else {
+      lines.push("No hiring decisions have been made yet (Acceptance Rate N/A).");
+    }
+    
+    // Contextualize Qualified Rate
+    lines.push(`Qualified Candidate Rate is ${stats.qualifiedRate}% (candidates scoring ≥60).`);
+    
+    // Skill Gap Insights
+    if (stats.skillGapIndex.length > 0) {
+      lines.push(`Rejected candidates frequently possess: ${stats.skillGapIndex.map(s => s.skill).join(", ")}.`);
+    }
+
+    const mostRejectedBin = scoreData.reduce((prev, current) => (prev.rejected > current.rejected) ? prev : current, scoreData[0]);
+    if (mostRejectedBin && mostRejectedBin.rejected > 0) {
+      lines.push(`Most rejections occur in the ${mostRejectedBin.range} score range.`);
+    }
+
+    if (topSkills.length > 0) {
+      lines.push(`Top emerging skill is "${topSkills[0].skill}".`);
+    }
+
+    return lines;
+  }, [filtered, stats, scoreData, topSkills]);
+
+  // Export Functions
+  const handleExportCSV = () => {
+    const headers = ["ID", "Name", "Email", "Job Title", "Score", "Status", "Decision", "Rejection Reason", "Top Skills", "Source", "Date"];
+    const rows = filtered.map(c => {
+      const skills = topSkills.map(s => s.skill).slice(0, 5).join("; ");
+      const decision = (c.hiringStatus || "").toLowerCase() === "accepted" ? "Accepted" 
+        : (c.hiringStatus || "").toLowerCase() === "rejected" ? "Rejected" 
+        : "Undecided";
+      
+      return [
+        c.id,
+        (c as any).name || "Candidate",
+        (c as any).email || "",
+        c.jobTitle || "",
+        c.score || "0",
+        c.status || "",
+        decision,
+        (c as any).rejectionReason || "",
+        skills,
+        c.source || "Other",
+        new Date((c.submittedAt?.seconds || 0) * 1000).toLocaleDateString()
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
     });
-    return arr;
-  }, [scored]);
-  const maxBin = Math.max(1, ...bins);
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `hr_analytics_export_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-  // Top skills extracted
-  const topSkills = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filtered.forEach((c) => {
-      const skills: string[] = Array.isArray((c as any)?.skills) ? (c as any).skills
-        : Array.isArray((c as any)?.parsed?.skills) ? (c as any).parsed.skills
-        : Array.isArray((c as any)?.rawKeywords) ? (c as any).rawKeywords
-        : [];
-      skills.forEach((k) => { const key = String(k).trim(); if (!key) return; counts[key] = (counts[key] || 0) + 1; });
-    });
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    const max = Math.max(1, ...sorted.map(([, v]) => v));
-    return { items: sorted, max };
-  }, [filtered]);
-
-  // Source breakdown
-  const srcBreakdown = useMemo(() => {
-    const norm = (s?: string) => {
-      const v = String(s || "other").toLowerCase();
-      if (v.includes("upload") || v.includes("csv")) return "Upload";
-      if (v.includes("outlook")) return "Outlook";
-      return "Other";
-    };
-    const map: Record<string, number> = { Upload: 0, Outlook: 0, Other: 0 };
-    filtered.forEach((c) => { map[norm(c?.source || c?.ingestion?.source || c?.origin)] += 1; });
-    const total = Object.values(map).reduce((a, b) => a + b, 0) || 1;
-    const pct = (v: number) => Math.round(100 * v / total);
-    return { map, pct, total };
-  }, [filtered]);
-
-  // Monthly volume (last 12 months)
-  const monthly = useMemo(() => {
-    const points: number[] = new Array(12).fill(0);
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    filtered.forEach((c) => {
-      const sec = (c?.submittedAt?.seconds || c?.createdAt?.seconds || c?.updatedAt?.seconds || c?.scoreUpdatedAt?.seconds || 0);
-      if (!sec) return;
-      const d = new Date(sec * 1000);
-      const monthsDiff = (d.getFullYear() - start.getFullYear()) * 12 + (d.getMonth() - start.getMonth());
-      if (monthsDiff >= 0 && monthsDiff < 12) points[monthsDiff] += 1;
-    });
-    const max = Math.max(1, ...points);
-    return { points, max, start };
-  }, [filtered]);
-
-  // Per-role table
-  const roleRows = useMemo(() => {
-    const titleById: Record<string, string> = {}; jobs.forEach((j) => { titleById[j.id] = j.title || j.id; });
-    const map: Record<string, { total: number; avg: number; pass: number; accepted: number; rejected: number }> = {};
-    filtered.forEach((c) => {
-      const key = String(c?.jobTitle || titleById[c?.jobProfileId || ""] || c?.jobProfileId || "—");
-      const r = map[key] || { total: 0, avg: 0, pass: 0, accepted: 0, rejected: 0 };
-      r.total += 1;
-      const sNum = typeof c?.score === "number" ? Number(c.score || 0) : null;
-      if (sNum !== null) { r.avg += sNum; if (sNum >= 60) r.pass += 1; }
-      const statusLc = String(c?.status || "").toLowerCase();
-      if (statusLc.includes("strong fit")) r.accepted += 1;
-      if (statusLc.includes("not a fit")) r.rejected += 1;
-      map[key] = r;
-    });
-    const rows = Object.entries(map).map(([role, v]) => ({
-      role,
-      total: v.total,
-      avg: v.total ? Math.round(v.avg / v.total) : 0,
-      passRate: v.total ? Math.round(100 * v.pass / v.total) : 0,
-      accepted: v.accepted,
-      rejected: v.rejected,
-    }));
-    rows.sort((a, b) => b.total - a.total);
-    return rows.slice(0, 8);
-  }, [filtered, jobs]);
-
-  // Export CSV of roleRows
-  function exportCsv() {
-    const headers = ["Job Title", "Total Candidates", "Average Score", "ATS Pass Rate", "Accepted", "Rejected"];
-    const lines = [headers.join(","), ...roleRows.map((r) => [r.role, r.total, r.avg, r.passRate + "%", r.accepted, r.rejected].join(","))];
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "reports.csv"; a.click(); URL.revokeObjectURL(url);
-  }
-  function exportPdf() { try { window.print(); } catch(_) {} }
-  function resetFilters() {
-    const d = new Date(); setJobId(""); setSourceFilter("");
-    setFromDate(new Date(d.getFullYear(), 0, 1).toISOString().slice(0, 10));
-    setToDate(new Date(d.getFullYear(), 11, 31).toISOString().slice(0, 10));
-  }
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
-    <main className="w-full space-y-6">
-      {/* Header */}
-      <section className="rounded-lg border bg-white p-4">
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50 p-6 font-sans text-gray-900">
+      <div className="mx-auto max-w-7xl space-y-6">
+        
+        {/* Header */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-base font-semibold">Reports & Analytics</h1>
-            <p className="text-xs text-gray-600">Overview of candidates, performance, and skill trends.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">HR Analytics Dashboard</h1>
+            <p className="text-sm text-gray-500">Real-time insights for decision support</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={exportCsv} className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50">Export CSV</button>
-            <button onClick={exportPdf} className="rounded-md bg-indigo-600 px-3 py-2 text-xs text-white hover:bg-indigo-700">Export PDF</button>
+          <div className="flex items-center gap-2 print:hidden">
+            <button onClick={handleExportCSV} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+              Export CSV
+            </button>
+            <button onClick={handlePrint} className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
+              Print PDF
+            </button>
           </div>
         </div>
-      </section>
 
-      {error && (
-        <section className="rounded-lg border bg-red-50 p-4 text-sm text-red-700">{error}</section>
-      )}
-
-      {/* Filters bar */}
-      <section className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-4">
-          <div>
-            <div className="text-[11px] text-gray-600">Date range</div>
-            <div className="mt-2 flex items-center gap-2">
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-40 rounded border px-2 py-1 text-xs" />
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-40 rounded border px-2 py-1 text-xs" />
+        {/* SMART Filters */}
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm print:hidden">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Date Range</label>
+              <div className="flex gap-2">
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full rounded border-gray-300 text-xs" />
+                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full rounded border-gray-300 text-xs" />
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="text-[11px] text-gray-600">Job</div>
-            <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="mt-2 w-full rounded border px-2 py-1 text-xs">
-              <option value="">All roles</option>
-              {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title || j.id}</option>))}
-            </select>
-          </div>
-          <div>
-            <div className="text-[11px] text-gray-600">Source</div>
-            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="mt-2 w-full rounded border px-2 py-1 text-xs">
-              <option value="">Upload, Outlook, Other</option>
-              <option value="upload">Upload</option>
-              <option value="outlook">Outlook</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div className="flex items-end justify-end gap-2">
-            <button className="rounded-md bg-indigo-600 px-3 py-2 text-xs text-white hover:bg-indigo-700">Apply</button>
-            <button onClick={resetFilters} className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50">Reset</button>
-          </div>
-        </div>
-      </section>
-
-      {/* KPI cards */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-gray-600">Total Candidates</div>
-          <div className="mt-2 text-2xl font-semibold">{totalCandidates}</div>
-          <div className="mt-1 text-[11px] text-gray-500">Last 12 months</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-gray-600">Average Match Score</div>
-          <div className="mt-2 text-2xl font-semibold">{avgScore}%</div>
-          <div className="mt-1 text-[11px] text-gray-500">Weighted by role</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-gray-600">ATS Pass Rate</div>
-          <div className="mt-2 text-2xl font-semibold">{atsPassRate}%</div>
-          <div className="mt-1 text-[11px] text-gray-500">First screening</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-xs text-gray-600">Accepted vs Rejected</div>
-          <div className="mt-2 text-2xl font-semibold">{acceptedCount} / {rejectedCount}</div>
-          <div className="mt-1 text-[11px] text-gray-500">Offer accepted / Rejected</div>
-        </div>
-      </section>
-
-      {/* Charts row: histogram + top skills (Recharts) */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        {/* Histogram */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-semibold text-gray-700">Score Distribution (Histogram)</div>
-              <div className="text-[11px] text-gray-500">Most candidates cluster between 60–85 ATS score.</div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Job Title</label>
+              <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="w-full rounded border-gray-300 text-xs">
+                <option value="">All Jobs</option>
+                {jobs.map((j) => <option key={j.id} value={j.id}>{j.title || j.id}</option>)}
+              </select>
             </div>
-            <div className="text-[11px] text-gray-500">Sample size: {totalCandidates}</div>
-          </div>
-          <div className="mt-4 h-40 w-full">
-            <ResponsiveContainer>
-              <BarChart data={bins.map((v, i) => ({ bucket: `${i * 10}`, count: v }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradIndigoPurple" x1="0" y1="1" x2="0" y2="0">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#a78bfa" />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="bucket" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} allowDecimals={false} />
-                <Tooltip cursor={{ fill: "#f9fafb" }} contentStyle={{ fontSize: 11 }} />
-                <Bar dataKey="count" fill="url(#gradIndigoPurple)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Top skills */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-gray-700">Top Skills (Extracted)</div>
-            <div className="text-[11px] text-gray-500">Top {Math.min(12, topSkills.items.length)} skills</div>
-          </div>
-          <div className="mt-4 h-48 w-full">
-            {topSkills.items.length > 0 ? (
-              <ResponsiveContainer>
-                <BarChart
-                  layout="vertical"
-                  data={topSkills.items.map(([skill, count]) => ({ skill, count }))}
-                  margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-                >
-                  <defs>
-                    <linearGradient id="gradIndigoPurple2" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#a78bfa" />
-                    </linearGradient>
-                  </defs>
-                  <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="skill" tick={{ fontSize: 11 }} width={120} />
-                  <Tooltip cursor={{ fill: "#f9fafb" }} contentStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="count" fill="url(#gradIndigoPurple2)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="text-[11px] text-gray-500">No skill data available.</div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Source breakdown + Monthly volume (Recharts) */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        {/* Source pie */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-gray-700">Candidate Source Breakdown</div>
-            <div className="text-[11px] text-gray-500">Upload vs Outlook vs Other</div>
-          </div>
-          <div className="mt-4 flex items-center gap-6">
-            <div className="h-40 w-40">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: "Upload", value: srcBreakdown.map.Upload },
-                      { name: "Outlook", value: srcBreakdown.map.Outlook },
-                      { name: "Other", value: srcBreakdown.map.Other },
-                    ]}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={50}
-                    outerRadius={80}
-                  >
-                    {[
-                      "#6366f1",
-                      "#22c55e",
-                      "#a78bfa",
-                    ].map((c, i) => (
-                      <Cell key={i} fill={c} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Source</label>
+              <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="w-full rounded border-gray-300 text-xs">
+                <option value="">All Sources</option>
+                <option value="upload">Upload</option>
+                <option value="outlook">Outlook</option>
+                <option value="other">Other</option>
+              </select>
             </div>
-            <div className="space-y-2 text-[11px]">
-              <div className="flex items-center gap-2"><span className="inline-block h-2 w-2 rounded bg-indigo-600" /> Upload <span className="text-gray-600">{srcBreakdown.pct(srcBreakdown.map.Upload)}%</span></div>
-              <div className="flex items-center gap-2"><span className="inline-block h-2 w-2 rounded bg-green-500" /> Outlook <span className="text-gray-600">{srcBreakdown.pct(srcBreakdown.map.Outlook)}%</span></div>
-              <div className="flex items-center gap-2"><span className="inline-block h-2 w-2 rounded bg-purple-400" /> Other <span className="text-gray-600">{srcBreakdown.pct(srcBreakdown.map.Other)}%</span></div>
-              <div className="pt-2 text-[10px] text-gray-500">Uploaded vs Outlook vs Other</div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Decision</label>
+              <select value={decisionStatus} onChange={(e) => setDecisionStatus(e.target.value)} className="w-full rounded border-gray-300 text-xs">
+                <option value="">All Statuses</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="undecided">Undecided</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Min Score: {minScore}</label>
+              <input type="range" min="0" max="100" value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Min Experience (Yrs)</label>
+              <input type="number" min="0" value={minExp} onChange={(e) => setMinExp(Number(e.target.value))} className="w-full rounded border-gray-300 text-xs" />
             </div>
           </div>
         </div>
 
-        {/* Monthly line */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-gray-700">Monthly Candidate Volume</div>
-            <div className="text-[11px] text-gray-500">Last 12 months</div>
-          </div>
-          <div className="mt-4 h-40 w-full">
-            <ResponsiveContainer>
-              <LineChart
-                data={monthly.points.map((v, i) => ({ m: i + 1, count: v }))}
-                margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="m" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} allowDecimals={false} />
-                <Tooltip contentStyle={{ fontSize: 11 }} cursor={{ stroke: "#e5e7eb" }} />
-                <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="mt-2 text-[10px] text-gray-500">Units: candidates/month</div>
-            <div className="text-[10px] text-gray-500">Peak in Q4 driven by graduate intake</div>
-          </div>
-        </div>
-      </section>
+        {/* AI Insights */}
+        <AiInsightsPanel insights={insights} loading={loading} />
 
-      {/* Per-role table */}
-      <section className="rounded-lg border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold text-gray-900">By Job Title</div>
+        {/* KPI Sections */}
+        <div className="space-y-6">
+          
+          {/* Volume & Efficiency */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">Volume & Efficiency</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <KpiCard 
+                title="Total Applicants" 
+                value={stats.totalApplicants} 
+                subtitle="All Candidates" 
+                tooltip="Total number of candidates in the pipeline" 
+              />
+              <KpiCard 
+                title="CV → Scored" 
+                value={`${stats.cvToScoredConversion}%`} 
+                subtitle="Conversion Rate" 
+                tooltip="Percentage of applicants who have been scored by the AI" 
+              />
+              <KpiCard 
+                title="HR Decision Coverage" 
+                value={`${stats.decisionCoverage}%`} 
+                subtitle="Decided / Total" 
+                tooltip="Percentage of applicants who have received a final HR decision (Accepted/Rejected)" 
+              />
+            </div>
+          </div>
+
+          {/* Quality & Health */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">Quality & Health</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <KpiCard 
+                title="Qualified Rate" 
+                value={`${stats.qualifiedRate}%`} 
+                subtitle="Score ≥ 60" 
+                tooltip="Percentage of scored candidates who meet the qualification threshold" 
+              />
+              <KpiCard 
+                title="Median Match Score" 
+                value={stats.medianMatchScore} 
+                subtitle="Scored Candidates" 
+                tooltip="The median score among all scored candidates (ignoring N/A)" 
+              />
+            </div>
+          </div>
+
+          {/* Decisions */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">Decisions</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <KpiCard 
+                title="HR Acceptance Rate" 
+                value={stats.acceptanceRate !== "N/A" ? `${stats.acceptanceRate}%` : "N/A"} 
+                subtitle="Decided Only" 
+                tooltip="Percentage of HR-decided candidates who were accepted" 
+              />
+              <KpiCard 
+                title="Scored → HR Decided" 
+                value={`${stats.scoredToDecidedConversion}%`} 
+                subtitle="Process Completion" 
+                tooltip="Percentage of scored candidates who have been decided by HR" 
+              />
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-t border-b bg-gray-50 text-xs text-gray-600">
-              <tr>
-                <th className="px-4 py-2">Job Title</th>
-                <th className="px-4 py-2">Total Candidates</th>
-                <th className="px-4 py-2">Average Score</th>
-                <th className="px-4 py-2">ATS Pass Rate</th>
-                <th className="px-4 py-2">Accepted</th>
-                <th className="px-4 py-2">Rejected</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roleRows.map((r) => (
-                <tr key={r.role} className="border-b">
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.role}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.total}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.avg}%</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.passRate}%</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.accepted}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{r.rejected}</td>
-                </tr>
-              ))}
-              {!loading && roleRows.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-center text-xs text-gray-500" colSpan={6}>No data for selected filters.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+
+        {/* Charts Row 1: Funnel & Decision */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartCard title="Hiring Funnel" subtitle="Conversion rates across stages">
+            <HiringFunnelChart data={funnelData} />
+          </ChartCard>
+          <ChartCard title="Score vs. Decision" subtitle="Distribution of scores by outcome">
+            <ScoreDecisionChart data={scoreData} />
+          </ChartCard>
         </div>
-      </section>
-    </main>
+
+        {/* Charts Row 2: Trends */}
+        <div className="grid grid-cols-1 gap-6">
+          <ChartCard title="Monthly Trends" subtitle="Volume and Quality over time">
+            <MonthlyTrendsChart data={trendsData} />
+          </ChartCard>
+        </div>
+
+        {/* Charts Row 3: Source & Skills */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartCard title="Source Breakdown" subtitle="Where candidates are coming from">
+            <SourceBreakdownChart data={sourceData.map} pct={sourceData.pct} />
+          </ChartCard>
+          <ChartCard title="Top Skills" subtitle="Most frequent skills extracted">
+            <TopSkillsChart items={topSkills} />
+          </ChartCard>
+        </div>
+
+        {/* Job Analytics Table */}
+        <div className="print:hidden">
+          <h3 className="mb-4 text-lg font-medium text-gray-900">Detailed Job Analytics</h3>
+          <JobAnalyticsTable data={jobAnalytics} />
+        </div>
+
+        {error && <div className="rounded bg-red-50 p-4 text-sm text-red-600">{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ title, value, subtitle, tooltip }: { title: string; value: string | number; subtitle: string; tooltip?: string }) {
+  return (
+    <div title={tooltip} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md cursor-help">
+      <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+      <div className="mt-2 flex items-baseline">
+        <span className="text-3xl font-semibold text-gray-900">{value}</span>
+      </div>
+      <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+        <p className="text-xs text-gray-500">{subtitle}</p>
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
   );
 }

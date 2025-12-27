@@ -26,7 +26,6 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,10 +36,14 @@ export default function LoginForm() {
       await signInWithEmailAndPassword(auth, email, password);
       setMessage("تم تسجيل الدخول بنجاح");
     } catch (err: any) {
+      console.error("Login Error:", err);
       const code = err?.code ?? "";
-      const baseMsg = translateError(code);
-      // أظهر كود الخطأ دائمًا للمساعدة على التشخيص في أي بيئة
-      setMessage(code ? `${baseMsg} (${code})` : baseMsg);
+      const msg = translateError(code);
+      if (msg === "تعذّر تسجيل الدخول") {
+        setMessage(`${msg} (${code || err.message})`);
+      } else {
+        setMessage(msg);
+      }
     } finally {
       setLoading(false);
     }

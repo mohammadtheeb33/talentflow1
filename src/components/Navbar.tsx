@@ -6,7 +6,7 @@ import { getClientAuth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 
 const links = [
-  { href: "/Dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/cvs", label: "Candidates" },
   { href: "/job-profiles", label: "Jobs" },
   { href: "/reports", label: "Reports" },

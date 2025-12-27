@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { collection, getDocs, limit, query, where, deleteDoc, doc } from "firebase/firestore";
 import { getClientAuth, getClientFirestore, ensureUid } from "@/lib/firebase";
+import EditJobModal from "./EditJobModal";
+
+type Weights = {
+  roleFit: number;
+  skillsQuality: number;
+  experienceQuality: number;
+  projectsImpact: number;
+  languageClarity: number;
+  atsFormat: number;
+};
 
 type JobProfile = {
   id: string;
@@ -12,6 +22,7 @@ type JobProfile = {
   optionalSkills?: string[];
   minYearsExp?: number;
   educationLevel?: string;
+  weights?: Weights;
 };
 
 export default function JobProfilesTable() {
@@ -19,6 +30,9 @@ export default function JobProfilesTable() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [editingJob, setEditingJob] = useState<JobProfile | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -45,11 +59,16 @@ export default function JobProfilesTable() {
       } catch (e: any) {
         setError(e?.message || "Failed to load job profiles");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [refreshKey]);
+
+  const handleEdit = (job: JobProfile) => {
+    setEditingJob(job);
+    setIsEditModalOpen(true);
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this job profile?")) return;
@@ -155,6 +174,9 @@ export default function JobProfilesTable() {
                     <Link href={`/job-profiles/new?prefill=${encodeURIComponent(item.title || item.id)}`} className="text-gray-400 hover:text-indigo-600" title="Duplicate">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                     </Link>
+                    <button onClick={() => handleEdit(item)} className="text-gray-400 hover:text-indigo-600" title="Edit">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </button>
                     <button onClick={() => handleDelete(item.id)} className="text-gray-400 hover:text-red-600" title="Delete">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
@@ -181,6 +203,12 @@ export default function JobProfilesTable() {
           </tbody>
         </table>
       </div>
+      <EditJobModal
+        job={editingJob}
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onUpdated={() => setRefreshKey((k) => k + 1)}
+      />
     </section>
   );
 }

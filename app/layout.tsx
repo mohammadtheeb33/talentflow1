@@ -1,7 +1,11 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Navbar from "@/components/Navbar";
+import { Inter } from "next/font/google";
 import RequireAuth from "@/components/RequireAuth";
+import MainLayout from "@/components/MainLayout";
+import { Toaster } from "sonner";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "TalentFlow | ATS Dashboard",
@@ -11,12 +15,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900">
+      <body className={`min-h-screen bg-gray-50 text-gray-900 ${inter.className}`}>
         <RequireAuth>
-          <Navbar />
-          <div className="w-full px-6 py-6">
+          <MainLayout>
             {children}
-          </div>
+          </MainLayout>
+          <Toaster position="top-center" />
         </RequireAuth>
       </body>
     </html>

@@ -1,5 +1,10 @@
 "use client";
-import JobProfilesTable from "@/components/JobProfilesTable";
+import dynamic from "next/dynamic";
+
+const JobProfilesTable = dynamic(() => import("@/components/JobProfilesTable"), {
+  loading: () => <div className="h-96 w-full rounded-xl bg-gray-50 animate-pulse" />,
+  ssr: false,
+});
 
 export default function JobProfilesPage() {
   return (

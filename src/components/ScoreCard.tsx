@@ -76,8 +76,19 @@ function ScoreItem({
 }
 
 export default function ScoreCard({ cv }: { cv: any }) {
-  const score: number | null = typeof cv?.score === "number" ? cv.score : null;
+  // Robust score parsing
+  const rawScore = cv?.score;
+  let score: number | null = null;
   
+  if (typeof rawScore === 'number') {
+    score = isNaN(rawScore) ? null : rawScore;
+  } else if (typeof rawScore === 'string') {
+    const match = rawScore.match(/(\d+(\.\d+)?)/);
+    if (match) {
+      score = parseFloat(match[0]);
+    }
+  }
+
   // Try to find detailed breakdown in either field
   let detailed: DetailedScoreBreakdown | undefined = cv?.scoreDetailedBreakdown;
   

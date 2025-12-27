@@ -1,104 +1,147 @@
 "use client";
-import React, { useState } from "react";
-import { UploadModal } from "@/components/UploadModal";
-import { ConnectOutlookModal } from "@/components/ConnectOutlookModal";
-import CandidatesTable from "@/components/CandidatesTable";
+import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import { Plus } from "lucide-react";
+import { SkeletonCard } from "@/components/ui/SkeletonCard";
+import { getClientAuth, ensureUid } from "@/lib/firebase";
+import { getPipelineStats } from "@/services/statsService";
+
+// Dynamic imports for heavy/interactive components
+const UploadModal = dynamic(
+  () => import("@/components/UploadModal").then((mod) => mod.UploadModal),
+  { ssr: false }
+);
+const ConnectOutlookModal = dynamic(
+  () => import("@/components/ConnectOutlookModal").then((mod) => mod.ConnectOutlookModal),
+  { ssr: false }
+);
+const CandidatesTable = dynamic(() => import("@/components/CandidatesTable"), {
+  loading: () => <div className="h-96 w-full rounded-xl bg-gray-50 animate-pulse" />,
+  ssr: false,
+});
 
 export default function DashboardPage() {
   const [openUpload, setOpenUpload] = useState(false);
   const [openOutlook, setOpenOutlook] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [period, setPeriod] = useState("Last 30 Days");
+
+  // Fetch stats separately to show loading state
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        await ensureUid();
+        const auth = getClientAuth();
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const data = await getPipelineStats(uid);
+        if (mounted) {
+          setStats(data);
+        }
+      } catch (e) {
+        console.error("Stats fetch error", e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header & Actions */}
-      <section className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">Overview of your recruitment pipeline and activities.</p>
+    <div className="flex flex-col min-h-screen">
+      {/* Top Header */}
+      <header className="sticky top-0 z-10 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 shadow-sm">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span>Overview</span>
+          <span>/</span>
+          <span className="font-semibold text-gray-900">Dashboard</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setOpenUpload(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        <div className="flex items-center gap-4">
+          <Link
+            href="/job-profiles/new"
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-            Upload CV
-          </button>
+            <Plus className="h-4 w-4" />
+            New Job
+          </Link>
         </div>
-      </section>
+      </header>
 
-      {/* Widgets Grid */}
-      <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Connect Outlook Widget */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-2xl">
-                📧
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Connect Outlook</h3>
-                <p className="text-xs text-gray-500">Sync emails & calendar</p>
-              </div>
+      {/* Main Content */}
+      <main className="flex-1 bg-gray-50 p-8">
+        <div className="mx-auto w-[90%] max-w-none">
+          {/* Pipeline Overview */}
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Pipeline Overview</h1>
+              <p className="mt-1 text-sm text-gray-500">Key performance metrics for current hiring period</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setOpenOutlook(true)}
+                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 transition-colors"
+              >
+                <span className="mr-2">📧</span> Connect Outlook
+              </button>
+              <button
+                onClick={() => setOpenUpload(true)}
+                className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+              >
+                <span className="mr-2">↑</span> Upload CV
+              </button>
             </div>
           </div>
-          <div className="mt-4">
-            <button 
-              onClick={() => setOpenOutlook(true)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
-            >
-              Connect Now
-            </button>
-          </div>
-        </div>
 
-        {/* Configure Stages Widget */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-50 text-2xl">
-                ⚙️
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Pipeline Settings</h3>
-                <p className="text-xs text-gray-500">Configure interview stages</p>
+          {/* KPI Cards */}
+          <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Offers Accepted */}
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-gray-600">Offers Accepted</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats ? stats.accepted : "—"}</div>
+                  <div className="mt-1 text-xs text-emerald-600">+12.5% vs last month</div>
+                </div>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">✓</div>
               </div>
             </div>
-          </div>
-          <div className="mt-4">
-            <Link href="/settings?tab=pipeline" className="block w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600">
-              Manage Stages
-            </Link>
-          </div>
-        </div>
-
-        {/* Quick Stats Widget (Placeholder) */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 text-2xl">
-                📊
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Pipeline Stats</h3>
-                <p className="text-xs text-gray-500">Weekly activity summary</p>
+            {/* Applications Rejected */}
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-gray-600">Applications Rejected</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats ? stats.rejected : "—"}</div>
+                  <div className="mt-1 text-xs text-red-600">-2.4% vs last month</div>
+                </div>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600">✕</div>
               </div>
             </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-gray-500">New candidates</span>
-            <span className="font-semibold text-gray-900">12</span>
-          </div>
+            {/* Total Candidates */}
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-gray-600">Total Candidates</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats ? stats.total : "—"}</div>
+                  <div className="mt-1 text-xs text-indigo-600">+8.1% vs last month</div>
+                </div>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">👥</div>
+              </div>
+            </div>
+          </section>
+
+          {/* Recent Applications */}
+          <section className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Recent Applications</h2>
+            <Link href="/cvs" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View All Candidates</Link>
+          </section>
+          <CandidatesTable limitCount={10} />
+
+          {/* Modals */}
+          <UploadModal isOpen={openUpload} onClose={() => setOpenUpload(false)} />
+          <ConnectOutlookModal isOpen={openOutlook} onClose={() => setOpenOutlook(false)} />
         </div>
-      </div>
-
-      {/* Main Content: Candidates Table */}
-      <CandidatesTable />
-
-      {/* Modals */}
-      <UploadModal isOpen={openUpload} onClose={() => setOpenUpload(false)} />
-      <ConnectOutlookModal isOpen={openOutlook} onClose={() => setOpenOutlook(false)} />
-    </main>
+      </main>
+    </div>
   );
 }
