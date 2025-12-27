@@ -440,7 +440,11 @@ export function getSourceBreakdown(candidates: Candidate[]) {
   });
   
   const total = candidates.length || 1;
-  const pct = (v: number) => Math.round((v / total) * 100);
+  const pct: Record<string, number> = {};
+  
+  Object.keys(map).forEach(key => {
+    pct[key] = Math.round((map[key] / total) * 100);
+  });
   
   return { map, pct };
 }
