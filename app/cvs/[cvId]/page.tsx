@@ -63,6 +63,61 @@ type JobProfile = {
   educationLevel?: string;
 };
 
+interface CV {
+  id: string;
+  uid?: string;
+  status?: string;
+  filename?: string;
+  storagePath?: string;
+  companyId?: string;
+  jobProfileId?: string;
+  jobTitle?: string;
+  
+  parsed?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    skills?: string[];
+    education?: any[];
+    experience?: any[];
+    summary?: string;
+    [key: string]: any;
+  };
+  
+  score?: number;
+  scoreExperienceYears?: number;
+  scoreBreakdown?: any;
+  scoreSkillsAnalysis?: {
+    missing?: string[];
+    [key: string]: any;
+  };
+  aiAnalysis?: string;
+  
+  createdAt?: any;
+  updatedAt?: any;
+  rescanRequestedAt?: any;
+  scoreRequestedAt?: any;
+  
+  name?: string;
+  email?: string;
+}
+
+function mergeCvData(prev: CV | null, newData: CV): CV {
+  if (!prev) return newData;
+  
+  const merged = { ...newData };
+  
+  // Preserve local optimistic or existing data if missing in new data
+  if (!merged.score && prev.score) merged.score = prev.score;
+  if (!merged.scoreExperienceYears && prev.scoreExperienceYears) merged.scoreExperienceYears = prev.scoreExperienceYears;
+  if (!merged.aiAnalysis && prev.aiAnalysis) merged.aiAnalysis = prev.aiAnalysis;
+  if (!merged.jobProfileId && prev.jobProfileId) merged.jobProfileId = prev.jobProfileId;
+  if (!merged.jobTitle && prev.jobTitle) merged.jobTitle = prev.jobTitle;
+  if (!merged.scoreBreakdown && prev.scoreBreakdown) merged.scoreBreakdown = prev.scoreBreakdown;
+  
+  return merged;
+}
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -75,7 +130,7 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
   const urlParams = useParams();
   const cvId = String(params?.cvId || urlParams?.cvId || "");
   
-  const [cv, setCv] = useState<any | null>(null);
+  const [cv, setCv] = useState<CV | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [jobs, setJobs] = useState<JobProfile[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
@@ -114,38 +169,23 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
         unsub = onSnapshot(ref, async (snap) => {
           if (!mounted) return;
           if (snap.exists()) {
-            const data = snap.data();
+            const data = snap.data() as Partial<CV>;
             // تأكد من ملكية المستند
-            if ((data as any)?.uid && (data as any).uid !== uid) {
+            if (data.uid && data.uid !== uid) {
               setError("غير مصرح: لا تملك هذه السيرة الذاتية");
               return;
             }
             
             // Intelligent State Merge (Fixes flickering/wiping issue)
-            setCv((prev: any) => {
-              const newData = { id: cvId, ...data };
-              
-              // If incoming data lacks critical AI fields that we already have locally,
-              // PRESERVE the local version. This happens when Firestore update is lagging
-              // behind a local optimistic update or if the backend temporarily returns partial data.
-              if (prev) {
-                if (!newData.score && prev.score) newData.score = prev.score;
-                if (!newData.scoreExperienceYears && prev.scoreExperienceYears) newData.scoreExperienceYears = prev.scoreExperienceYears;
-                if (!newData.aiAnalysis && prev.aiAnalysis) newData.aiAnalysis = prev.aiAnalysis;
-                if (!newData.jobProfileId && prev.jobProfileId) newData.jobProfileId = prev.jobProfileId;
-                if (!newData.jobTitle && prev.jobTitle) newData.jobTitle = prev.jobTitle;
-                if (!newData.scoreBreakdown && prev.scoreBreakdown) newData.scoreBreakdown = prev.scoreBreakdown;
-              }
-              return newData;
-            });
+            setCv((prev) => mergeCvData(prev, { id: cvId, ...data } as CV));
             
-            setSelectedJobId(String((data as any)?.jobProfileId || ""));
+            setSelectedJobId(String(data.jobProfileId || ""));
 
             // Resolve PDF URL when relevant fields change
-            const resolvePdfUrl = async (current: any) => {
-              const sp: string | undefined = (current as any)?.storagePath;
-              const fname: string = String((current as any)?.filename || "cv.pdf");
-              const companyId: string | undefined = (current as any)?.companyId;
+            const resolvePdfUrl = async (current: Partial<CV>) => {
+              const sp = current.storagePath;
+              const fname = String(current.filename || "cv.pdf");
+              const companyId = current.companyId;
               const candidates: string[] = [];
               if (sp) { candidates.push(sp); if (mounted) setPdfRefPath(sp); }
               
@@ -335,13 +375,13 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       const db = getClientFirestore();
       const ref = doc(db, "cvs", cvId);
       // If we have the PDF blob and a writable Storage path, re-upload to trigger parse
-      const filename = String((cv as any)?.filename || "cv.pdf");
+      const filename = String(cv?.filename || "cv.pdf");
       const targetPathCandidates: string[] = [];
       // Prefer an existing path under /cvs/
       if (pdfRefPath && (pdfRefPath.includes("/cvs/") || pdfRefPath.startsWith("cvs/"))) {
         targetPathCandidates.push(pdfRefPath);
       }
-      const companyId: string | undefined = (cv as any)?.companyId;
+      const companyId = cv?.companyId;
       if (companyId) targetPathCandidates.push(`companies/${companyId}/cvs/${cvId}/original/${filename}`);
       targetPathCandidates.push(`unscoped/cvs/${cvId}/original/${filename}`);
       let targetPath: string | null = null;
@@ -552,20 +592,20 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       const db = getClientFirestore();
       const ref = doc(db, "cvs", cvId);
       const snap = await getDoc(ref);
-      const data = snap.exists() ? snap.data() : cv;
+      const data = (snap.exists() ? snap.data() : cv) as Partial<CV> | null;
 
       // GUARD: Prevent re-scoring if status is finalized
-      const currentStatus = String((data as any)?.status || "").toLowerCase();
+      const currentStatus = String(data?.status || "").toLowerCase();
       if (["rejected", "strong_fit", "accepted", "not_a_fit", "not a fit", "strong fit", "hired", "interviewed", "offer_sent"].includes(currentStatus)) {
         console.log(`Skipping local scoring for finalized status: ${currentStatus}`);
         return;
       }
-      const parsed = (data as any)?.parsed;
+      const parsed = data?.parsed;
       if (!parsed) throw new Error("لا توجد بيانات مستخرجة parsed");
 
       // حضّر ملف الوظيفة المستخدم
       let jobData: any = null;
-      let jobId = selectedJobId || String((data as any)?.jobProfileId || "");
+      let jobId = selectedJobId || String(data?.jobProfileId || "");
       if (jobId && jobId !== "auto") {
         try {
           const jpSnap = await getDoc(doc(db, "jobProfiles", jobId));
@@ -584,7 +624,7 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
           optionalSkills: [],
           minYearsExp: Math.min(5, Math.max(1, (parsed?.experience?.length || 0))),
           educationLevel: (Array.isArray(parsed?.education) && parsed.education.length > 0) ? "bachelor" : "none",
-          title: (data as any)?.jobTitle || "General Role",
+          title: data?.jobTitle || "General Role",
         };
         jobId = "auto";
       } else {
