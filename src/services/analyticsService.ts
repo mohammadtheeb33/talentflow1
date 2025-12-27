@@ -1,4 +1,4 @@
-import { Candidate, JobProfile, FunnelData, JobAnalytics, MonthlyTrend, ScoreBin } from "./types"; // Assuming types might be moved or I should keep them here. I'll keep them here for now as they are in the file.
+
 
 export interface Candidate {
   id: string;
@@ -352,7 +352,7 @@ export function calculateJobAnalytics(candidates: Candidate[], jobs: JobProfile[
     // 1. Median Score (Scored ONLY)
     // Rule: If scoredCandidates === 0 -> N/A
     const scores = scored.map(c => c.score!);
-    const medianScore = scores.length > 0 ? Math.round(calculateMedian(scores)) : "N/A";
+    const medianScore: number | "N/A" = scores.length > 0 ? Math.round(calculateMedian(scores)) : "N/A";
     
     // 2. HR Acceptance Rate (Decided ONLY)
     // Rule: acceptedCandidates / decidedCandidates

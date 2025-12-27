@@ -66,12 +66,12 @@ export const CandidateRow = memo(function CandidateRow({ item, onDeleted, select
   
   const submittedStr = fmtSubmitted(item.submittedAt?.seconds ? item.submittedAt : item.updatedAt);
   const [deleting, setDeleting] = useState(false);
-  const [localStatus, setLocalStatus] = useState<HiringStatus>(item.hiringStatus || "undecided");
+  const [localStatus, setLocalStatus] = useState<HiringStatus>((item.hiringStatus as HiringStatus) || "undecided");
 
   // Sync local status if prop changes
   useEffect(() => {
     if (item.hiringStatus) {
-      setLocalStatus(item.hiringStatus);
+      setLocalStatus(item.hiringStatus as HiringStatus);
     }
   }, [item.hiringStatus]);
 

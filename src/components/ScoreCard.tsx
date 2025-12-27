@@ -14,9 +14,18 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { DetailedScoreBreakdown, RiskFlag } from "@/lib/scoreEngine";
+import { CV } from "@/types/cv";
 
 // Fallback type if import fails or for loose typing
-type Breakdown = { skillsScore?: number; experienceScore?: number; educationScore?: number; formatScore?: number };
+type Breakdown = { 
+  skillsScore?: number; 
+  experienceScore?: number; 
+  educationScore?: number; 
+  formatScore?: number;
+  skills?: number;
+  experience?: number;
+  education?: number;
+};
 
 function ScoreTooltip({ title, children }: { title: string, children: React.ReactNode }) {
   return (
@@ -77,7 +86,7 @@ function ScoreItem({
 
 export default function ScoreCard({ cv }: { cv: CV | null }) {
   // Robust score parsing
-  const rawScore = cv?.score;
+  const rawScore = cv?.score as any;
   let score: number | null = null;
   
   if (typeof rawScore === 'number') {
