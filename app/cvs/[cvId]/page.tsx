@@ -689,7 +689,7 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-4">
             <Link 
-              href="/Dashboard" 
+              href="/dashboard" 
               className="group flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-900"
             >
               <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
@@ -697,7 +697,7 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
             
             <div className="flex flex-col">
               <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
-                <Link href="/Dashboard" className="hover:text-gray-900">Candidates</Link>
+                <Link href="/dashboard" className="hover:text-gray-900">Candidates</Link>
                 <span>/</span>
                 <span className="text-gray-900">
                   {cv?.parsed?.name || cv?.name || "Candidate Profile"}

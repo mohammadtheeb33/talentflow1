@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { getClientAuth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { 
-  LayoutDashboard, 
   Users, 
   Briefcase, 
   FileBarChart, 
@@ -15,7 +14,6 @@ import {
 } from "lucide-react";
 
 const links = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cvs", label: "Candidates", icon: Users },
   { href: "/job-profiles", label: "Jobs", icon: Briefcase },
   { href: "/reports", label: "Reports", icon: FileBarChart },

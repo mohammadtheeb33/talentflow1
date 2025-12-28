@@ -52,7 +52,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white shadow-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
-          <Link href="/Dashboard" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+          <Link href="/dashboard" className="flex items-center gap-2 transition-opacity hover:opacity-80">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-md">
               <span className="text-xs font-bold">TF</span>
             </div>
