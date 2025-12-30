@@ -46,13 +46,16 @@ export default function SettingsPage() {
             </button>
             <button
               onClick={() => setActiveTab("team")}
-              className={`whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+              className={`flex w-full items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
                 activeTab === "team"
                   ? "bg-indigo-50 text-indigo-700"
-                  : "text-gray-900 hover:bg-gray-50 hover:text-gray-900"
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
               }`}
             >
-              Team Members
+              <span>Team Members</span>
+              <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                Soon
+              </span>
             </button>
           </div>
         </nav>

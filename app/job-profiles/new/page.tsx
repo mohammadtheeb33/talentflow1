@@ -192,6 +192,7 @@ export default function NewJobProfilePage() {
                   <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
                   <input
                     type="number"
+                    aria-label={label}
                     step="0.05"
                     min="0"
                     max="1"

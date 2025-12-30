@@ -30,7 +30,7 @@ type Breakdown = {
 function ScoreTooltip({ title, children }: { title: string, children: React.ReactNode }) {
   return (
     <div className="group relative flex items-center justify-center">
-      <HelpCircle className="h-3 w-3 text-gray-400 ml-1 cursor-help" />
+      <HelpCircle className="h-3 w-3 text-gray-500 ml-1 cursor-help" />
       <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
         <div className="font-semibold mb-1 border-b border-gray-700 pb-1">{title}</div>
         <div className="space-y-1">
@@ -117,7 +117,7 @@ export default function ScoreCard({ cv }: { cv: CV | null }) {
 
   // Helper to determine overall score color
   const getOverallColor = (s: number | null) => {
-    if (s === null) return "text-gray-400";
+    if (s === null) return "text-gray-500";
     if (s >= 80) return "text-emerald-600";
     if (s >= 60) return "text-amber-600";
     return "text-red-600";
@@ -137,7 +137,7 @@ export default function ScoreCard({ cv }: { cv: CV | null }) {
           <div>
             <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">Overall Match</div>
             <div className={`text-5xl font-bold mt-1 ${getOverallColor(score)}`}>
-              {score ?? "—"}<span className="text-xl text-gray-400 font-normal">/100</span>
+              {score ?? "—"}<span className="text-xl text-gray-500 font-normal">/100</span>
             </div>
           </div>
           {cv?.scoreExperienceYears !== undefined && (

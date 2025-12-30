@@ -100,9 +100,12 @@ export default function Navbar() {
                 <button
                   onClick={async () => {
                     try {
+                      // Clear the middleware cookie
+                      document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
                       const auth = getClientAuth();
                       await signOut(auth);
                       router.push("/auth/login");
+                      router.refresh();
                     } catch (_) {}
                   }}
                   className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"

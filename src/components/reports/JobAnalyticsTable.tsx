@@ -30,7 +30,7 @@ export default function JobAnalyticsTable({ data }: JobAnalyticsTableProps) {
               <td className="px-4 py-3 text-right text-gray-600">{row.total}</td>
               <td className="px-4 py-3 text-right">
                 {row.jobHealthScore === "N/A" ? (
-                  <span className="text-xs text-gray-400">N/A</span>
+                  <span className="text-xs text-gray-500">N/A</span>
                 ) : (
                   <div className="flex items-center justify-end gap-2">
                     <span className="text-xs font-medium text-gray-700">{row.jobHealthScore}</span>
@@ -63,10 +63,10 @@ export default function JobAnalyticsTable({ data }: JobAnalyticsTableProps) {
                 )}
               </td>
               <td className="px-4 py-3 text-right text-gray-600">
-                {row.acceptanceRate === "N/A" ? <span className="text-gray-400">N/A</span> : `${row.acceptanceRate}%`}
+                {row.acceptanceRate === "N/A" ? <span className="text-gray-500">N/A</span> : `${row.acceptanceRate}%`}
               </td>
               <td className="px-4 py-3 text-right text-gray-600">
-                {row.atsPassRate === "N/A" ? <span className="text-gray-400">N/A</span> : `${row.atsPassRate}%`}
+                {row.atsPassRate === "N/A" ? <span className="text-gray-500">N/A</span> : `${row.atsPassRate}%`}
               </td>
               <td className="px-4 py-3 text-right text-emerald-600 font-medium">{row.accepted}</td>
               <td className="px-4 py-3 text-right text-red-600 font-medium">{row.rejected}</td>

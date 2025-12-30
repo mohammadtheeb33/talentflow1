@@ -393,33 +393,33 @@ export default function ReportsPage() {
 
         {/* Charts Row 1: Funnel & Decision */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ChartCard title="Hiring Funnel" subtitle="Conversion rates across stages">
+          <ChartCard title="Hiring Funnel" subtitle="Conversion rates across stages" minHeightClass="min-h-[256px]">
             <HiringFunnelChart data={funnelData} />
           </ChartCard>
-          <ChartCard title="Score vs. Decision" subtitle="Distribution of scores by outcome">
+          <ChartCard title="Score vs. Decision" subtitle="Distribution of scores by outcome" minHeightClass="min-h-[256px]">
             <ScoreDecisionChart data={scoreData} />
           </ChartCard>
         </div>
 
         {/* Charts Row 2: Trends */}
         <div className="grid grid-cols-1 gap-6">
-          <ChartCard title="Monthly Trends" subtitle="Volume and Quality over time">
+          <ChartCard title="Monthly Trends" subtitle="Volume and Quality over time" minHeightClass="min-h-[256px]">
             <MonthlyTrendsChart data={trendsData} />
           </ChartCard>
         </div>
 
         {/* Charts Row 3: Source & Skills */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ChartCard title="Source Breakdown" subtitle="Where candidates are coming from">
+          <ChartCard title="Source Breakdown" subtitle="Where candidates are coming from" minHeightClass="min-h-[160px]">
             <SourceBreakdownChart data={sourceData.map} pct={sourceData.pct} />
           </ChartCard>
-          <ChartCard title="Top Skills" subtitle="Most frequent skills extracted">
+          <ChartCard title="Top Skills" subtitle="Most frequent skills extracted" minHeightClass="min-h-[192px]">
             <TopSkillsChart items={topSkills} />
           </ChartCard>
         </div>
 
         {/* Job Analytics Table */}
-        <div className="print:hidden">
+        <div className="print:hidden min-h-[256px]">
           <h3 className="mb-4 text-lg font-medium text-gray-900">Detailed Job Analytics</h3>
           <JobAnalyticsTable data={jobAnalytics} />
         </div>
@@ -442,14 +442,14 @@ function KpiCard({ title, value, subtitle, tooltip }: { title: string; value: st
   );
 }
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function ChartCard({ title, subtitle, children, minHeightClass }: { title: string; subtitle: string; children: React.ReactNode; minHeightClass?: string }) {
   return (
     <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-4">
         <h3 className="text-lg font-medium text-gray-900">{title}</h3>
         <p className="text-xs text-gray-500">{subtitle}</p>
       </div>
-      <div className="flex-1">{children}</div>
+      <div className={`flex-1 ${minHeightClass || ''}`}>{children}</div>
     </div>
   );
 }

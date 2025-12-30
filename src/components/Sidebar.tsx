@@ -9,15 +9,12 @@ import {
   Briefcase, 
   FileBarChart, 
   LogOut, 
-  Settings,
-  DollarSign
 } from "lucide-react";
 
 const links = [
   { href: "/cvs", label: "Candidates", icon: Users },
   { href: "/job-profiles", label: "Jobs", icon: Briefcase },
   { href: "/reports", label: "Reports", icon: FileBarChart },
-  { href: "/dashboard/cost-tracker", label: "AI Costs", icon: DollarSign },
 ];
 
 export default function Sidebar() {
@@ -32,23 +29,40 @@ export default function Sidebar() {
     if (isAuthRoute) return;
     try {
       const auth = getClientAuth();
-      const u = auth.currentUser;
-      const name = u?.displayName || null;
-      const em = u?.email || null;
-      setDisplayName(name);
-      setEmail(em);
-      const base = (name || em || "").trim();
-      if (base) {
-        const parts = base.split(/\s+/).filter(Boolean);
-        const first = parts[0] || "";
-        const last = parts.length > 1 ? parts[parts.length - 1] : "";
-        const init = (first.slice(0, 1) + (last.slice(0, 1) || "")).toUpperCase();
-        setInitials(init || base.slice(0, 2).toUpperCase());
-      }
+      const unsub = auth.onAuthStateChanged(async (u) => {
+        if (u) {
+          // If user is anonymous, force logout
+          if (u.isAnonymous) {
+            try {
+              document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              await signOut(auth);
+              router.push("/auth/login");
+              return;
+            } catch (_) {}
+          }
+          
+          const name = u.displayName || null;
+          const em = u.email || null;
+          setDisplayName(name);
+          setEmail(em);
+          const base = (name || em || "").trim();
+          if (base) {
+            const parts = base.split(/\s+/).filter(Boolean);
+            const first = parts[0] || "";
+            const last = parts.length > 1 ? parts[parts.length - 1] : "";
+            const init = (first.slice(0, 1) + (last.slice(0, 1) || "")).toUpperCase();
+            setInitials(init || base.slice(0, 2).toUpperCase());
+          }
+        } else {
+          setDisplayName(null);
+          setEmail(null);
+        }
+      });
+      return () => unsub();
     } catch (_) {
       // ignore
     }
-  }, [isAuthRoute]);
+  }, [isAuthRoute, router]);
 
   if (isAuthRoute) return null;
 
@@ -79,13 +93,13 @@ export default function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`group flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "bg-indigo-50 text-indigo-600"
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
               }`}
             >
-              <Icon className={`h-5 w-5 ${active ? "text-indigo-600" : "text-gray-400 group-hover:text-gray-500"}`} />
+              <Icon className={`h-5 w-5 ${active ? "text-indigo-600" : "text-gray-500 group-hover:text-gray-600"}`} />
               {link.label}
             </Link>
           );
@@ -105,9 +119,12 @@ export default function Sidebar() {
           <button
             onClick={async () => {
               try {
+                // Clear the middleware cookie
+                document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
                 const auth = getClientAuth();
                 await signOut(auth);
                 router.push("/auth/login");
+                router.refresh();
               } catch (_) {}
             }}
             className="text-gray-400 hover:text-gray-600"

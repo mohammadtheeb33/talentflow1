@@ -96,9 +96,9 @@ export async function ensureUid(): Promise<string> {
     if (existing?.uid) return existing.uid;
     await new Promise<User | null>((resolve) => onAuthStateChanged(auth, resolve));
     if (auth.currentUser?.uid) return auth.currentUser.uid;
-    await signInAnonymously(auth);
+    // await signInAnonymously(auth); // Disabled: Do not allow guest login
     await new Promise<User | null>((resolve) => onAuthStateChanged(auth, resolve));
-    if (!auth.currentUser?.uid) throw new Error("Unable to establish user session");
+    if (!auth.currentUser?.uid) throw new Error("User not authenticated");
     return auth.currentUser.uid;
   } catch (e: any) {
     const code = String(e?.code || "").toLowerCase();
