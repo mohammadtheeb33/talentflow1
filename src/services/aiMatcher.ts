@@ -91,6 +91,12 @@ async function generateWithFallback(prompt: string, maxOutputTokens?: number): P
       };
     } catch (e: any) {
       console.warn(`Model ${modelName} failed:`, e.message);
+      
+      // CRITICAL: Identify Rate Limits immediately
+      if (e.message.includes("429") || e.message.toLowerCase().includes("quota") || e.message.toLowerCase().includes("resource exhausted")) {
+        throw new Error("Rate Limited (429): Too many requests. Please slow down.");
+      }
+
       lastError = e;
       // If it's a safety block or strict content policy, retrying might not help, but switching models might.
       // If it's quota, switching models might not help if they share quota, but worth a try.
@@ -130,9 +136,16 @@ export async function parseAndEvaluateCvWithAI(
   if (evalResult.status === "fulfilled") {
     evaluation = evalResult.value;
   } else {
+    const errorMsg = evalResult.reason?.message || "Unknown error";
+    
+    // CRITICAL: Propagate Rate Limit errors so we don't save bad data
+    if (errorMsg.includes("429") || errorMsg.includes("Rate Limited")) {
+        throw new Error(errorMsg);
+    }
+
     console.error("Eval Task Failed:", evalResult.reason);
-    evaluation.gaps.push(`Eval Error: ${evalResult.reason?.message || "Unknown error"}`);
-    evaluation.summary = `Could not complete evaluation: ${evalResult.reason?.message}`;
+    evaluation.gaps.push(`Eval Error: ${errorMsg}`);
+    evaluation.summary = `Could not complete evaluation: ${errorMsg}`;
   }
 
   return {
