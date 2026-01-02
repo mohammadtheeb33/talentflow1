@@ -33,6 +33,7 @@ export interface CV {
 
   // Scoring & Analysis
   score?: number;
+  matchScore?: number;
   scoreExperienceYears?: number;
   scoreBreakdown?: {
     skills?: number;

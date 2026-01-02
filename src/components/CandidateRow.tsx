@@ -27,7 +27,7 @@ export const CandidateRow = memo(function CandidateRow({ item, onDeleted, select
   const avatarText = initials(item.parsed?.name || item.name, item.parsed?.email || item.email);
   
   // Robust score parsing
-  const rawScore = item.score;
+  const rawScore = item.score ?? item.matchScore;
   let scoreNum: number | null = null;
   
   if (rawScore !== null && rawScore !== undefined) {

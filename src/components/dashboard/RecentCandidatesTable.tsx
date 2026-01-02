@@ -47,7 +47,7 @@ export default function RecentCandidatesTable() {
             name: data.parsed?.name || data.name || "Unnamed Candidate",
             role: data.parsed?.jobTitle || data.jobTitle || "Unknown Role",
             source: data.source || "Upload",
-            score: typeof data.score === 'number' ? Math.round(data.score) : 0,
+            score: typeof data.score === 'number' ? Math.round(data.score) : (typeof data.matchScore === 'number' ? Math.round(data.matchScore) : 0),
             status: data.hiringStatus 
               ? (data.hiringStatus.charAt(0).toUpperCase() + data.hiringStatus.slice(1)) 
               : (data.status || "New")
