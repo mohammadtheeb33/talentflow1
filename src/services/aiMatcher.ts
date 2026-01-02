@@ -290,21 +290,55 @@ export async function evaluateCvTextWithAI(
 
   try {
     const { text: responseText, model: usedModel, usage } = await generateWithFallback(prompt);
-    const aiResult = extractJson<AIMatchResult>(responseText, {
-      overallScore: 0, roleFitScore: 0, techSkillsScore: 0, keyStrengths: [], gaps: ["AI Error"],
-      summary: "Evaluation failed.", skillsAnalysis: { directMatches: [], inferredMatches: [], missing: [] }
-    });
+    
+    // 1. Robust JSON Extraction
+    let rawJson: any = extractJson<any>(responseText, null);
+    
+    // If null, try one more time with aggressive cleanup
+    if (!rawJson) {
+        try {
+            const clean = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            const first = clean.indexOf('{');
+            const last = clean.lastIndexOf('}');
+            if (first !== -1 && last !== -1) {
+                rawJson = JSON.parse(clean.substring(first, last + 1));
+            }
+        } catch (e) {}
+    }
 
-    const clean = (v: any) => typeof v === 'number' ? v : 0;
-    aiResult.overallScore = clean(aiResult.overallScore);
-    aiResult.roleFitScore = clean(aiResult.roleFitScore);
-    aiResult.techSkillsScore = clean(aiResult.techSkillsScore);
+    if (!rawJson) {
+         throw new Error("Failed to parse AI response JSON");
+    }
 
-    aiResult.usage = {
+    // 2. Score Normalization (Handle various keys: overallScore, matchScore, score)
+    let rawScore = rawJson.overallScore ?? rawJson.matchScore ?? rawJson.score ?? 0;
+    
+    // Handle string scores (e.g., "85/100", "85%")
+    if (typeof rawScore === 'string') {
+       const match = rawScore.match(/(\d+(\.\d+)?)/);
+       if (match) {
+           rawScore = parseFloat(match[0]);
+       }
+    }
+
+    const finalScore = Number(rawScore) || 0;
+
+    // 3. Construct Final Result
+    const aiResult: AIMatchResult = {
+      overallScore: finalScore,
+      roleFitScore: Number(rawJson.roleFitScore) || 0,
+      techSkillsScore: Number(rawJson.techSkillsScore) || 0,
+      keyStrengths: Array.isArray(rawJson.keyStrengths) ? rawJson.keyStrengths : [],
+      gaps: Array.isArray(rawJson.gaps) ? rawJson.gaps : [],
+      summary: rawJson.summary || rawJson.explanation || "No summary provided.",
+      skillsAnalysis: rawJson.skillsAnalysis || { directMatches: [], inferredMatches: [], missing: [] },
+      usage: {
         inputTokens: usage?.promptTokenCount || 0,
         outputTokens: usage?.candidatesTokenCount || 0,
         model: usedModel
+      }
     };
+
     return aiResult;
   } catch (error: any) {
     console.error(`AI Eval Final Error:`, error);
