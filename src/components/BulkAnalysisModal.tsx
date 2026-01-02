@@ -5,7 +5,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, BeakerIcon, PlayIcon, CommandLineIcon } from '@heroicons/react/24/outline';
 import { getClientFirestore } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, Timestamp } from "firebase/firestore";
-import { processBatchScoring } from "@/services/bulkScoringService";
+import { processBatchScoring, scoreSingleCv } from "@/services/bulkScoringService";
 
 interface BulkAnalysisModalProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ export function BulkAnalysisModal({ isOpen, onClose, selectedIds = [] }: BulkAna
   const [selectedJobId, setSelectedJobId] = useState("");
   const [dateRangeOption, setDateRangeOption] = useState("7d");
   const [processing, setProcessing] = useState(false);
-  const [logs, setLogs] = useState<{ msg: string; type: "info" | "success" | "error" }[]>([]);
+  const [logs, setLogs] = useState<{ id?: string; msg: string; type: "info" | "success" | "error" | "pending" }[]>([]);
   const [progress, setProgress] = useState({ processed: 0, total: 0 });
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -61,7 +61,7 @@ export function BulkAnalysisModal({ isOpen, onClose, selectedIds = [] }: BulkAna
     }
     
     setProcessing(true);
-    setLogs([{ msg: "Starting bulk analysis...", type: "info" }]);
+    setLogs([]); // Reset logs
     setProgress({ processed: 0, total: 0 });
     try {
         const db = getClientFirestore();
@@ -90,17 +90,53 @@ export function BulkAnalysisModal({ isOpen, onClose, selectedIds = [] }: BulkAna
         const total = idsToProcess.length;
         setProgress({ processed: 0, total });
 
-        await processBatchScoring(idsToProcess, selectedJobId, jobTitle, (current, totalCount, message) => {
-          setProgress({ processed: current, total: totalCount });
-          if (message) setLogs(prev => [...prev, { msg: message, type: message.toLowerCase().includes("error") ? "error" : message.toLowerCase().includes("scored") ? "success" : "info" }]);
-        });
+        // 1. Prepare Queue
+        const queue = [...idsToProcess];
 
-        setLogs(prev => [...prev, { msg: "Finalizing database updates...", type: "info" }]);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        for (let i = 0; i < queue.length; i++) {
+            const cvId = queue[i];
+            
+            // Log: Processing...
+            setLogs(prev => [...prev, { id: cvId, msg: `Processing CV (${cvId.slice(0, 6)}...)...`, type: 'pending' }]);
+
+            try {
+                // 2. Score Single CV (Using Service Helper instead of axios)
+                const result = await scoreSingleCv(cvId, selectedJobId, jobTitle);
+
+                // Success
+                if (result.status === "skipped") {
+                    setLogs(prev => prev.map(log => 
+                        log.id === cvId ? { ...log, msg: `⚠️ ${result.message}`, type: 'info' } : log
+                    ));
+                } else {
+                    setLogs(prev => prev.map(log => 
+                        log.id === cvId ? { ...log, msg: `✅ Scored: ${Math.round(result.score)}%`, type: 'success' } : log
+                    ));
+                }
+                
+                setProgress(prev => ({ ...prev, processed: i + 1 }));
+
+            } catch (error: any) {
+                // Failure
+                console.error(error);
+                const isRateLimit = error.message?.includes("429") || error.message?.includes("Rate Limited");
+                setLogs(prev => prev.map(log => 
+                    log.id === cvId ? { ...log, msg: `❌ Failed: ${isRateLimit ? 'Server Busy (Rate Limit)' : error.message}`, type: 'error' } : log
+                ));
+            }
+
+            // 3. Mandatory Delay (2 seconds)
+            if (i < queue.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+
+        setLogs(prev => [...prev, { msg: "Finalizing...", type: "info" }]);
+        await new Promise(resolve => setTimeout(resolve, 1000));
         router.refresh();
         onClose();
 
-        setLogs(prev => [...prev, { msg: "Batch processing completed!", type: "success" }]);
+        // Optional: Toast or final message handled by parent/refresh
     } catch (e: any) {
         setLogs(prev => [...prev, { msg: `Critical Error: ${e.message}`, type: "error" }]);
     } finally {
@@ -252,6 +288,7 @@ export function BulkAnalysisModal({ isOpen, onClose, selectedIds = [] }: BulkAna
                                     <div key={i} className={`mb-1 ${
                                         log.type === 'error' ? 'text-red-400' : 
                                         log.type === 'success' ? 'text-green-400' : 
+                                        log.type === 'pending' ? 'text-yellow-400' :
                                         'text-gray-300'
                                     }`}>
                                         <span className="opacity-50 mr-2">{new Date().toLocaleTimeString()}</span>
