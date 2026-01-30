@@ -7,6 +7,7 @@ import Link from "next/link";
 import { getClientAuth } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
 import { isAdminUser } from "@/config/admins";
+import { createUserInFirestore } from "@/lib/auth";
 
 const ConnectOutlookModal = dynamic(
   () => import("@/components/ConnectOutlookModal").then((mod) => mod.ConnectOutlookModal),
@@ -41,6 +42,7 @@ export function LoginClient() {
             router.replace(nextParam);
             return;
           }
+          await createUserInFirestore(user);
           const adminOk = await isAdminUser({ uid: user.uid, email: user.email });
           router.replace(adminOk ? "/admin" : "/dashboard");
         }

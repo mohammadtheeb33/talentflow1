@@ -38,4 +38,5 @@ next-env.d.ts
 
 # secrets
 service-account.json
+apps/functions/.runtimeconfig.json
 
