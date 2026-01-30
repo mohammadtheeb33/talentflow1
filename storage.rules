@@ -11,10 +11,11 @@ service firebase.storage {
     // Rules for CVs
     // Path: cvs/{candidateId}/original/{filename}
     match /cvs/{candidateId}/original/{filename} {
-      // Allow read/write if authenticated
-      // Ideally we would check if request.auth.uid matches the owner of the candidate document,
-      // but in storage rules we don't have easy access to Firestore data.
-      // So we rely on the fact that the upload logic generates the path.
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Also allow 'candidates' path which was used by some API versions
+    match /candidates/{candidateId}/{filename} {
       allow read, write: if isAuthenticated();
     }
     
@@ -26,6 +27,11 @@ service firebase.storage {
     // Companies paths (if needed)
     match /companies/{companyId}/{allPaths=**} {
       allow read, write: if isAuthenticated();
+    }
+    
+    // Resumes from Public Career Page
+    match /resumes/{allPaths=**} {
+      allow read, write: if true;
     }
     
     // Default deny

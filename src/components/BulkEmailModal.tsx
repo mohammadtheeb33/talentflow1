@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import { X, ChevronLeft, ChevronRight, Send, Wand2, AlertCircle, CheckCircle2, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { CandidateItem } from "./CandidateRow";
+import { CV as CandidateItem } from "@/types/cv";
 import { generateEmail, EmailDraft } from "@/services/aiEmailGenerator";
 import { sendOutlookEmail, validateOutlookScopes } from "@/services/outlookEmailService";
 import { getClientFirestore, getClientAuth } from "@/lib/firebase";

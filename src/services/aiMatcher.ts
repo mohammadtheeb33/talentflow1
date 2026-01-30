@@ -4,12 +4,22 @@ import { ParsedCvResult, ExperienceItem } from "@/lib/parsedCv";
 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(API_KEY);
+// Initialize Gemini lazily to avoid build/module-load crashes
+let genAI: GoogleGenerativeAI | null = null;
+
+function getGenAI() {
+  if (!genAI) {
+    if (!API_KEY) {
+      console.warn("Gemini API Key is missing!");
+    }
+    genAI = new GoogleGenerativeAI(API_KEY);
+  }
+  return genAI;
+}
 
 // Models to try in order of preference (Speed -> Stability)
 // Updated based on available models for the current API key
-const MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"];
+const MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-pro-latest"];
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -75,14 +85,46 @@ async function generateWithFallback(prompt: string, maxOutputTokens?: number): P
   for (const modelName of MODELS) {
     try {
       // Set timeout based on model (Flash needs to be fast, Pro can take longer)
-      const timeout = modelName.includes("flash") ? 10000 : 20000;
+      const timeout = modelName.includes("flash") ? 15000 : 30000;
       
-      const model = genAI.getGenerativeModel({ 
+      const ai = getGenAI();
+      if (!ai) throw new Error("Google Generative AI not initialized (Missing API Key)");
+
+      const model = ai.getGenerativeModel({ 
         model: modelName,
         safetySettings: SAFETY_SETTINGS
       }, { timeout });
 
-      const result = await model.generateContent(prompt);
+      // Retry logic for Rate Limits (429)
+      let result;
+      let attemptError;
+      
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) {
+            // Exponential backoff: 2s, 4s, 8s
+            const delay = 2000 * Math.pow(2, attempt);
+            console.log(`Retrying ${modelName} (Attempt ${attempt + 1}/3) after ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          
+          result = await model.generateContent(prompt);
+          break; // Success, exit retry loop
+        } catch (err: any) {
+          attemptError = err;
+          // Only retry on 429 or 503 (Service Unavailable)
+          if (err.message.includes("429") || err.message.includes("503") || err.message.toLowerCase().includes("quota") || err.message.toLowerCase().includes("resource exhausted")) {
+            console.warn(`Rate limit/Quota hit for ${modelName}: ${err.message}`);
+            continue;
+          }
+          // If other error, throw immediately to try next model
+          throw err;
+        }
+      }
+
+      if (!result && attemptError) throw attemptError;
+      if (!result) throw new Error("Unknown error during generation");
+
       const response = await result.response;
       return {
         text: response.text(),
@@ -92,14 +134,12 @@ async function generateWithFallback(prompt: string, maxOutputTokens?: number): P
     } catch (e: any) {
       console.warn(`Model ${modelName} failed:`, e.message);
       
-      // CRITICAL: Identify Rate Limits immediately
-      if (e.message.includes("429") || e.message.toLowerCase().includes("quota") || e.message.toLowerCase().includes("resource exhausted")) {
-        throw new Error("Rate Limited (429): Too many requests. Please slow down.");
+      // Check if we should stop trying completely (e.g. Invalid API Key)
+      if (e.message.includes("API key not valid")) {
+         throw e;
       }
 
       lastError = e;
-      // If it's a safety block or strict content policy, retrying might not help, but switching models might.
-      // If it's quota, switching models might not help if they share quota, but worth a try.
       continue;
     }
   }

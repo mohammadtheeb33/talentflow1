@@ -14,6 +14,7 @@ export interface CV {
   
   // Hiring Status
   hiringStatus?: "accepted" | "rejected" | "undecided" | string;
+  rejectionReason?: string;
   decidedAt?: any;
   decidedBy?: string | null;
 

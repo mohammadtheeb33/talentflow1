@@ -2,8 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { height: 100%; }
-body { font-feature-settings: "liga" 1, "kern" 1; }
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 15 23 42;
+  }
+  .dark {
+    --background: 2 6 23;
+    --foreground: 255 255 255;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white transition-colors duration-300;
+    font-feature-settings: "liga" 1, "kern" 1;
+  }
+}
 
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
@@ -19,4 +35,79 @@ body { font-feature-settings: "liga" 1, "kern" 1; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-gray-400;
   }
+}
+
+/* --- Light Mode (Default) --- */
+.rbc-calendar {
+  color: #0f172a !important;
+}
+.rbc-off-range-bg {
+  background-color: #f1f5f9 !important;
+}
+.rbc-header {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+.rbc-day-bg + .rbc-day-bg {
+  border-left: 1px solid #e2e8f0 !important;
+}
+.rbc-timeslot-group,
+.rbc-time-content,
+.rbc-day-slot .rbc-time-slot {
+  border-color: #e2e8f0 !important;
+}
+.rbc-today {
+  background-color: rgba(79, 70, 229, 0.1) !important;
+}
+
+/* --- Dark Mode Overrides (Scoped) --- */
+.dark .rbc-calendar {
+  color: #cbd5e1 !important;
+}
+.dark .rbc-off-range-bg {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+}
+.dark .rbc-header,
+.dark .rbc-day-bg + .rbc-day-bg,
+.dark .rbc-timeslot-group,
+.dark .rbc-time-content,
+.dark .rbc-day-slot .rbc-time-slot {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .rbc-today {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+}
+
+.modern-calendar .rbc-header {
+  padding: 12px 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  text-align: center;
+}
+.modern-calendar .rbc-month-view,
+.modern-calendar .rbc-time-view {
+  border-radius: 16px;
+  overflow: hidden;
+}
+.modern-calendar .rbc-event {
+  border-radius: 6px !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.28);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
+  color: white !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.modern-calendar .rbc-event:hover {
+  transform: scale(1.02);
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.45);
+}
+.modern-calendar .rbc-event-content {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }

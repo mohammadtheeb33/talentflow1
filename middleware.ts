@@ -1,52 +1,65 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// NOTE: The user requested "next-auth/middleware", but "next-auth" is not installed in this project.
+// We are implementing the EXACT SAME strict separation logic using the existing "auth_token" cookie mechanism.
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  // Define protected and public routes
-  const isProtectedRoute = 
-    pathname.startsWith('/dashboard') || 
-    pathname.startsWith('/cvs') || 
-    pathname.startsWith('/job-profiles') || 
-    pathname.startsWith('/settings') || 
-    pathname.startsWith('/reports') || 
-    pathname.startsWith('/upload');
-    
-  const isAuthRoute = pathname.startsWith('/auth');
-  const isRoot = pathname === '/';
 
-  // Check for auth token in cookies
+  // 0. EXPLICITLY ALLOW Outlook Callback (Prevent Redirect Loop)
+  if (pathname.startsWith('/api/integrations/outlook/callback')) {
+    return NextResponse.next();
+  }
+  if (pathname.startsWith('/admin/login')) {
+    return NextResponse.next();
+  }
+  
+  // 1. Define Admin/Protected Routes
+  // These are the routes that were moved to app/(admin)
+  const adminRoutes = [
+    '/admin',
+    '/dashboard', 
+    '/cvs', 
+    '/candidates', // user mentioned this, linking to cvs likely
+    '/job-profiles', 
+    '/jobs',      // user mentioned this
+    '/reports', 
+    '/calendar', 
+    '/settings', 
+    '/upload'
+  ];
+
+  const isAdminRoute = adminRoutes.some(route => pathname.startsWith(route));
+  
+  // Check for auth token (existing mechanism)
   const token = request.cookies.get('auth_token')?.value;
 
-  // 1. Redirect unauthenticated users to login
-  if (isProtectedRoute && !token) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/auth/login';
-    url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
+  // 2. Strict Logic: If accessing Admin routes without login -> Redirect to Login
+  if (isAdminRoute && !token) {
+    // Moved login from /auth/login to /login (in app/(public)/login)
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // 2. Redirect authenticated users away from login
-  if ((isAuthRoute || isRoot) && token) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    return NextResponse.redirect(url);
-  }
+  // 3. If accessing Public routes (Careers, Login) -> ALLOW everyone
+  // (Implicitly allowed by falling through)
   
-  // 3. Handle root redirect if no token
-  if (isRoot && !token) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/auth/login';
-    return NextResponse.redirect(url);
+  // Optional: Redirect authenticated users away from login page
+  if (pathname === '/login' && token) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+  if (pathname === '/admin/login' && token) {
+    return NextResponse.redirect(new URL('/admin', request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  // Correctly ignore all static files, images, and API routes
+  // Exclude public assets, api/public, and static files from auth middleware
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)',
+    '/((?!api/public|api/integrations/outlook/callback|careers|_next/static|_next/image|favicon.ico).*)',
   ],
 };

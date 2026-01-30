@@ -1,6 +1,6 @@
 {
   "gemini": {
-    "api_key": "AIzaSyBXA4LmELLN9RFaOdRCaYxyV5AyKI1Od9o",
+    "api_key": "AIzaSyC0k9uvaG9oyFfSOLYgKVZlim3LfOOJGS8",
     "model": "gemini-2.0-flash",
     "max_input_mb": 8
   }

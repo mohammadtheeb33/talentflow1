@@ -1,12 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  compress: true,
+  experimental: {
+    optimizePackageImports: [
+      'recharts',
+      'lucide-react',
+      'firebase',
+      '@radix-ui/react-icons'
+    ]
+  },
   async headers() {
     const isDev = process.env.NODE_ENV === 'development';
     
     // Build CSP string
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // Added https://apis.google.com to script-src
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' blob: data: https://*.googleapis.com https://firebasestorage.googleapis.com",
       "font-src 'self' data:",
@@ -16,7 +26,8 @@ const nextConfig = {
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
-      "frame-src 'self' blob: data: https://firebasestorage.googleapis.com https://docs.google.com",
+      // Added https://cvchek-6b250.firebaseapp.com and https://apis.google.com to frame-src for Auth
+      "frame-src 'self' blob: data: https://firebasestorage.googleapis.com https://docs.google.com https://cvchek-6b250.firebaseapp.com https://apis.google.com",
       // Only upgrade insecure requests in production
       isDev ? "" : "upgrade-insecure-requests",
       isDev ? "" : "block-all-mixed-content"
@@ -49,7 +60,7 @@ const nextConfig = {
           // Only send HSTS in production to avoid locking localhost to HTTPS
           ...(isDev ? [] : [{
             key: 'Strict-Transport-Security',
-            value: 'max-age=31536000; includeSubDomains; preload',
+            value: 'max-age=63072000; includeSubDomains; preload',
           }]),
         ],
       },

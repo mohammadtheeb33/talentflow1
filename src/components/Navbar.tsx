@@ -7,7 +7,7 @@ import { signOut } from "firebase/auth";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/cvs", label: "Candidates" },
+  { href: "/candidates", label: "Candidates" },
   { href: "/job-profiles", label: "Jobs" },
   { href: "/reports", label: "Reports" },
 ];
@@ -49,7 +49,7 @@ export default function Navbar() {
     return null;
   }
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white shadow-sm">
+    <header className="sticky top-0 z-50 relative w-full border-b border-gray-200 bg-white shadow-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
           <Link href="/dashboard" className="flex items-center gap-2 transition-opacity hover:opacity-80">
@@ -81,7 +81,7 @@ export default function Navbar() {
             <div className="text-sm font-semibold text-gray-900">{displayName || "User"}</div>
             <div className="text-xs text-gray-500">{email || "Guest"}</div>
           </div>
-          <div className="relative">
+          <div className="relative overflow-visible">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700 ring-2 ring-transparent transition-all hover:bg-indigo-200 focus:outline-none focus:ring-indigo-500"
@@ -91,7 +91,7 @@ export default function Navbar() {
               {initials}
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 mt-2 w-48 overflow-visible origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none animate-in fade-in zoom-in-95 duration-100 z-[999]">
                 <div className="border-b px-4 py-2 sm:hidden">
                   <div className="font-medium text-gray-900">{displayName}</div>
                   <div className="text-xs text-gray-500">{email}</div>
@@ -104,7 +104,7 @@ export default function Navbar() {
                       document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
                       const auth = getClientAuth();
                       await signOut(auth);
-                      router.push("/auth/login");
+                      router.push("/login");
                       router.refresh();
                     } catch (_) {}
                   }}

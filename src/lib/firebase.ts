@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously, type User } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInAnonymously, setPersistence, browserLocalPersistence, type User } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator, writeBatch, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { getStorage, ref as storageRef, getDownloadURL, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 
@@ -18,6 +18,8 @@ if (typeof window !== "undefined" && !firebaseConfig.apiKey) {
 }
 
 let appInstance: ReturnType<typeof initializeApp> | null = null;
+let authInstance: ReturnType<typeof getAuth> | null = null;
+let persistenceInit: Promise<void> | null = null;
 export function getClientAuth() {
   if (typeof window === "undefined") {
     // Avoid initializing Firebase during SSR import; this is client-only.
@@ -26,7 +28,13 @@ export function getClientAuth() {
   if (!appInstance) {
     appInstance = getApps().length ? getApps()[0] : initializeApp(firebaseConfig as any);
   }
-  return getAuth(appInstance);
+  if (!authInstance) {
+    authInstance = getAuth(appInstance);
+  }
+  if (!persistenceInit) {
+    persistenceInit = setPersistence(authInstance, browserLocalPersistence).catch(() => {});
+  }
+  return authInstance;
 }
 
 export function getClientFirestore() {
@@ -39,9 +47,17 @@ export function getClientFirestore() {
   const db = getFirestore(appInstance);
   try {
     const onLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    const useEmulator = String(process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR || "") === "1";
+    // Check for explicit "1" to enable emulator, otherwise assume production (even on localhost)
+    // This allows testing against production Firestore from localhost which is needed for Outlook Integration
+    const useEmulator = String(process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR || "0") === "1";
     const port = Number(process.env.FIREBASE_EMULATORS_FIRESTORE_PORT || 0) || 8090;
-    if (onLocalhost && useEmulator) connectFirestoreEmulator(db, "127.0.0.1", port);
+    
+    if (onLocalhost && useEmulator) {
+        console.log("[Firebase] Connecting to Firestore Emulator");
+        connectFirestoreEmulator(db, "127.0.0.1", port);
+    } else if (onLocalhost) {
+        console.log("[Firebase] Connecting to Production Firestore (Emulator disabled)");
+    }
   } catch (_) {
     // ignore emulator connection errors; continue with default
   }
@@ -56,6 +72,12 @@ export function getClientStorage(): FirebaseStorage {
     appInstance = getApps().length ? getApps()[0] : initializeApp(firebaseConfig as any);
   }
   const storage = getStorage(appInstance);
+  
+  // Debug check for missing bucket
+  if (!firebaseConfig.storageBucket) {
+      console.error("CRITICAL: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is not set in environment variables.");
+  }
+
   try {
     const onLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
     const useEmulator = String(process.env.NEXT_PUBLIC_USE_STORAGE_EMULATOR || "") === "1";
@@ -75,6 +97,9 @@ export async function getCvDownloadUrl(storagePath: string): Promise<string> {
     return await getDownloadURL(r);
   } catch (e) {
     // Fallback for emulator direct URL
+    const useEmulator = String(process.env.NEXT_PUBLIC_USE_STORAGE_EMULATOR || "") === "1";
+    if (!useEmulator) throw e;
+
     try {
       const bucket = String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "");
       const useEmulator = String(process.env.NEXT_PUBLIC_USE_STORAGE_EMULATOR || "") === "1";

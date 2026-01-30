@@ -9,7 +9,7 @@ const db = admin.firestore();
 // Get credentials from config or environment
 const CLIENT_ID = functions.config().outlook?.client_id || process.env.OUTLOOK_CLIENT_ID || "YOUR_CLIENT_ID";
 const CLIENT_SECRET = functions.config().outlook?.client_secret || process.env.OUTLOOK_CLIENT_SECRET || "YOUR_CLIENT_SECRET";
-const REDIRECT_URI = functions.config().outlook?.redirect_uri || process.env.OUTLOOK_REDIRECT_URI || "https://us-central1-cvchk-1a7e0.cloudfunctions.net/outlookOAuth";
+const REDIRECT_URI = functions.config().outlook?.redirect_uri || process.env.OUTLOOK_REDIRECT_URI || "https://us-central1-cvchek-6b250.cloudfunctions.net/outlookOAuth";
 
 exports.outlookOAuth = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {

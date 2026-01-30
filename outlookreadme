@@ -1,0 +1,83 @@
+تقرير ميزة توصيل حساب Outlook (محدث - User-Based)
+
+ملخص الميزة
+الميزة تتيح لكل مستخدم ربط حساب Outlook الخاص به بشكل مستقل بحسابه على المنصة، ثم استيراد مرفقات السير الذاتية من بريده وتحليلها تلقائيًا.
+تم تحديث النظام ليدعم تعدد المستخدمين (User-Based) بدلاً من النظام المركزي السابق (Admin-Based)، مع تحسينات أمنية باستخدام PKCE.
+
+تدفق الاستخدام من الواجهة
+1) المستخدم يضغط زر Connect Outlook داخل لوحة التحكم.
+2) يتم فتح نافذة مصادقة Microsoft OAuth.
+3) بعد نجاح الربط تُرسل النافذة رسالة إلى الصفحة الرئيسية ويتم تحديث حالة الاتصال.
+4) المستخدم يحدد Job Profile ثم يحدد نطاق التاريخ والفلتر ويشغل الاستيراد.
+5) يتم عرض سجل الحالة في الواجهة مع عدد الملفات المستوردة أو الأخطاء.
+
+الواجهة الأمامية
+- نافذة الربط: ConnectOutlookModal تعرض حالة الاتصال الخاصة بالمستخدم الحالي.
+- بدء الربط: startOutlookOAuth يستدعي مسار auth-url (مع التوكن) ويعيد رابط المصادقة.
+- فحص الحالة: checkOutlookStatus يستدعي مسار status للتحقق من ربط المستخدم الحالي.
+- جلب المرفقات: fetchOutlookAttachments يستدعي مسار sync لجلب رسائل المستخدم الحالي.
+- فصل الربط: disconnectOutlookIntegration يستدعي مسار disconnect لحذف ربط المستخدم الحالي.
+
+مسارات API الخاصة بـ Outlook
+1) GET /api/integrations/outlook/auth-url
+   - التحقق: يتطلب Authentication Header (Firebase ID Token).
+   - المنطق:
+     - ينشئ State فريد ويخزنه في Firestore (outlook_oauth_states).
+     - يولد PKCE Code Verifier و Code Challenge (URL-Safe Base64).
+     - يحفظ Verifier في الـ State (مشفر أو كما هو في بيئة آمنة).
+     - ينظف الـ States القديمة للمستخدم لتجنب تضارب الجلسات (Fix for AADSTS50148).
+     - يبني رابط OAuth مع scopes كاملة لـ Microsoft Graph.
+
+2) GET /api/integrations/outlook/callback
+   - المنطق:
+     - يستقبل code و state.
+     - يتحقق من صلاحية State من Firestore ويطابق userId.
+     - يجلب Code Verifier المخزن لاستخدامه في تبادل التوكن (PKCE).
+     - يستبدل Code بـ Access/Refresh Tokens.
+     - يجلب بيانات المستخدم (/me) من Graph.
+     - يحفظ البيانات في مسار المستخدم الخاص: integrations/outlook/users/{userId}.
+     - يحذف الـ State المستخدم.
+
+3) POST /api/integrations/outlook/sync
+   - التحقق: يتطلب Authentication Header.
+   - المنطق:
+     - يقرأ بيانات الربط من integrations/outlook/users/{userId}.
+     - يحدّث access_token إذا لزم الأمر.
+     - يتحقق من وجود Exchange Mailbox.
+     - يجلب الرسائل والمرفقات الخاصة بالمستخدم.
+     - يرفع الملفات وينشئ Candidates في Firestore مرتبطين بالمستخدم (uid).
+
+4) GET /api/integrations/outlook/status
+   - يقرأ حالة الاتصال من integrations/outlook/users/{userId}.
+
+5) POST /api/integrations/outlook/disconnect
+   - يحذف وثيقة integrations/outlook/users/{userId}.
+
+تخزين البيانات في Firestore (Schema الجديد)
+1) OAuth States (مؤقت)
+   - المسار: outlook_oauth_states/{stateId}
+   - الحقول: userId, codeVerifier, tenant, authBase, createdAt, expiresAt.
+   - الأمان: المستخدم ينشئ ويقرأ الـ State الخاص به فقط.
+
+2) User Integration (دائم)
+   - المسار: integrations/outlook/users/{userId}
+   - الحقول: connected, accessToken, refreshToken, expiresAt, scope, email, displayName, tenantId, status, lastSyncError, createdAt, updatedAt.
+   - الأمان: المستخدم يقرأ ويكتب وثيقته فقط (request.auth.uid == userId).
+
+إصلاحات وممارسات أمنية (Best Practices)
+1) PKCE (Proof Key for Code Exchange):
+   - تم تطبيقه لمنع هجمات Authorization Code Injection.
+   - تم إصلاح خطأ AADSTS50148 عن طريق توحيد دالة Base64Url وتنظيف الـ States القديمة.
+
+2) User Isolation:
+   - لا توجد توكنات مشتركة. كل مستخدم له توكن خاص به في وثيقته الخاصة.
+   - قواعد Firestore تضمن عدم وصول مستخدم لبيانات مستخدم آخر.
+
+3) Error Handling:
+   - التعامل مع حسابات Microsoft التي ليس لديها صندوق بريد (No Exchange Mailbox) بتحديث الحالة إلى 'error' بدلاً من الفشل الصامت.
+   - التعامل مع انتهاء صلاحية التوكن بتجديده تلقائيًا.
+
+الإعدادات المطلوبة
+- OUTLOOK_CLIENT_ID
+- OUTLOOK_CLIENT_SECRET
+- OUTLOOK_TENANT_ID (اختياري، الافتراضي common)

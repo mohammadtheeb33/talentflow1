@@ -1,85 +1,82 @@
-function isLocal() {
-  if (typeof window === "undefined") return false;
-  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+import { getClientAuth } from "@/lib/firebase";
+
+async function getIdToken(): Promise<string> {
+  const auth = getClientAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("User not authenticated");
+  return await user.getIdToken();
 }
 
-function candidateBases(): string[] {
-  const project = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "";
-  const emulatorPort = process.env.FIREBASE_EMULATORS_FUNCTIONS_PORT || "5001";
-  const remote = `https://us-central1-${project}.cloudfunctions.net`;
-  const local = `http://localhost:${emulatorPort}/${project}/us-central1`;
-  const forceRemote = (process.env.NEXT_PUBLIC_FORCE_REMOTE_FUNCTIONS || "") === "1";
-  if (forceRemote) return [remote];
-  return isLocal() ? [local, remote] : [remote];
+function getFunctionsBaseUrl(): string {
+  const override = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
+  if (override) return override.replace(/\/$/, "");
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  if (!projectId) return "";
+  return `https://us-central1-${projectId}.cloudfunctions.net`;
 }
 
-async function fetchWithFallback(path: string, init: RequestInit): Promise<Response> {
-  const bases = candidateBases();
-  let lastErr: any = null;
-  for (const base of bases) {
-    const url = `${base}${path}`;
+export async function sendInviteEmail(to: string, subject: string, html: string): Promise<void> {
+  const idToken = await getIdToken();
+  const baseUrl = getFunctionsBaseUrl();
+  if (!baseUrl) throw new Error("Missing Functions base URL");
+  const resp = await fetch(`${baseUrl}/sendInviteEmail`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ to, subject, html })
+  });
+  if (!resp.ok) {
+    let msg = `Failed to send email (${resp.status})`;
     try {
-      const resp = await fetch(url, init);
-      if (resp.ok) return resp;
-      // If 404/500, try next base; capture error message if available
-      lastErr = new Error(`HTTP ${resp.status} on ${url}`);
-    } catch (e: any) {
-      // Network error like Failed to fetch
-      lastErr = new Error(`${e?.message || e} on ${url}`);
-    }
+      const j = await resp.json();
+      msg = j?.error || msg;
+    } catch {}
+    throw new Error(msg);
   }
-  throw lastErr || new Error("Failed to fetch from any functions base");
 }
 
 export async function startOutlookOAuth(uid: string, scopesOverride?: string, forceConsent?: boolean, tenantOverride?: string): Promise<{ authUrl: string; stateId?: string }> {
-  const qs = new URLSearchParams({ uid: encodeURIComponent(uid) } as any);
-  qs.set("action", "start");
-  if (scopesOverride) qs.set("scopes", scopesOverride);
-  if (forceConsent) qs.set("force_consent", "1");
-  if (tenantOverride) qs.set("tenant", tenantOverride);
-  const resp = await fetchWithFallback(
-    `/outlookOAuth?${qs.toString()}`,
-    { method: "GET" }
-  );
+  const params = new URLSearchParams();
+  if (tenantOverride) {
+    params.set("tenant", tenantOverride);
+  }
+  const url = params.toString()
+    ? `/api/integrations/outlook/auth-url?${params.toString()}`
+    : "/api/integrations/outlook/auth-url";
+  const idToken = await getIdToken();
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${idToken}` }
+  });
+  
   if (!resp.ok) {
     let msg = `Failed to start OAuth (${resp.status})`;
     try { const j = await resp.json(); msg = j?.error || msg; } catch {}
     throw new Error(msg);
   }
-  return await resp.json();
+  
+  const data = await resp.json();
+  return { authUrl: data.url };
 }
 
 // Build a URL to open the start endpoint in a popup that auto redirects to Microsoft.
 export function buildOutlookStartUrl(uid: string, scopesOverride?: string, forceConsent?: boolean, tenantOverride?: string): string {
-  const base = candidateBases()[0];
-  const params = new URLSearchParams({ action: "start", uid: encodeURIComponent(uid), auto: "1" } as any);
-  if (scopesOverride) params.set("scopes", scopesOverride);
-  if (forceConsent) params.set("force_consent", "1");
-  if (tenantOverride) params.set("tenant", tenantOverride);
-  return `${base}/outlookOAuth?${params.toString()}`;
+  console.warn("buildOutlookStartUrl is deprecated in favor of startOutlookOAuth async call");
+  return "#"; 
 }
 
 export async function checkOutlookStatus(uid: string): Promise<{ connected: boolean; email?: string; displayName?: string }>{
-  // Try both bases; prefer any response that reports connected=true.
-  const bases = candidateBases();
-  const path = `/outlookOAuth?action=status&uid=${encodeURIComponent(uid)}&details=1`;
-  let lastResult: any = null;
-  let lastErr: any = null;
-  for (const base of bases) {
-    try {
-      const resp = await fetch(`${base}${path}`, { method: "GET" });
-      const json = await resp.json();
-      // Prefer a connected response immediately.
-      if (json && json.connected) return json as any;
-      // Keep the last non-connected result to return if none are connected.
-      lastResult = json;
-    } catch (e: any) {
-      lastErr = e;
-    }
+  try {
+    const idToken = await getIdToken();
+    const resp = await fetch('/api/integrations/outlook/status', {
+      headers: { Authorization: `Bearer ${idToken}` }
+    });
+    if (!resp.ok) return { connected: false };
+    const json = await resp.json();
+    return json;
+  } catch (e) {
+    console.error("Failed to check outlook status", e);
+    return { connected: false };
   }
-  if (lastResult) return lastResult as any;
-  if (lastErr) throw lastErr;
-  return { connected: false } as any;
 }
 
 export async function fetchOutlookAttachments(
@@ -88,22 +85,36 @@ export async function fetchOutlookAttachments(
   to: string,
   options?: { fileType?: string; folder?: string; jobProfileId?: string }
 ): Promise<{ createdCount: number; items: any[] }>{
-  const payload: any = { uid, from, to };
+  const payload: any = { from, to };
   if (options?.fileType) payload.fileType = options.fileType;
   if (options?.folder) payload.folder = options.folder;
   if (options?.jobProfileId) payload.jobProfileId = options.jobProfileId;
-  const resp = await fetchWithFallback(
-    `/fetchAttachments`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  );
+  const idToken = await getIdToken();
+  const resp = await fetch('/api/integrations/outlook/sync', {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify(payload),
+  });
+
   if (!resp.ok) {
     let msg = `Failed to fetch attachments (${resp.status})`;
-    try { const j = await resp.json(); msg = j?.error || msg; } catch {}
+    try { 
+      const j = await resp.json(); 
+      msg = j?.error || msg; 
+      if (j?.details) {
+        const detailStr = typeof j.details === 'string' ? j.details : JSON.stringify(j.details);
+        msg += ` | Details: ${detailStr}`;
+      }
+    } catch {}
     throw new Error(msg);
   }
   return await resp.json();
+}
+
+export async function disconnectOutlookIntegration(uid: string): Promise<void> {
+  const idToken = await getIdToken();
+  const resp = await fetch('/api/integrations/outlook/disconnect', { method: 'POST', headers: { Authorization: `Bearer ${idToken}` } });
+  if (!resp.ok) {
+    throw new Error(`Failed to disconnect (${resp.status})`);
+  }
 }

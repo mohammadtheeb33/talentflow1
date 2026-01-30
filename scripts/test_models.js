@@ -21,10 +21,8 @@ async function listModels() {
     
     const modelsToTest = [
     "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
     "gemini-flash-latest",
-    "gemini-1.5-flash", // Expect failure
-    "gemini-1.5-pro"    // Expect failure
+    "gemini-2.0-flash-lite"
   ];
 
     console.log("Testing models...");

@@ -33,7 +33,7 @@ export default function SourceBreakdownChart({ data, pct }: SourceBreakdownChart
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="space-y-2 text-[11px]">
+      <div className="space-y-2 text-[11px] text-slate-700 dark:text-slate-200">
         {chartData.map((entry, index) => (
           <div key={entry.name} className="flex items-center gap-2">
             <span 
@@ -41,10 +41,10 @@ export default function SourceBreakdownChart({ data, pct }: SourceBreakdownChart
               style={{ backgroundColor: COLORS[index % COLORS.length] }} 
             /> 
             {entry.name} 
-            <span className="text-gray-600">{pct[entry.name]}%</span>
+            <span className="text-slate-500 dark:text-slate-400">{pct[entry.name]}%</span>
           </div>
         ))}
-        <div className="pt-2 text-[10px] text-gray-500">
+        <div className="pt-2 text-[10px] text-slate-500 dark:text-slate-400">
           {chartData.map(d => d.name).join(" vs ")}
         </div>
       </div>

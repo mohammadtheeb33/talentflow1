@@ -9,6 +9,7 @@ node_modules
 # next.js
 /.next/
 /out/
+/functions/.next/
 
 # production
 /build
@@ -16,6 +17,7 @@ node_modules
 # misc
 .DS_Store
 *.pem
+.firebase/
 
 # debug
 npm-debug.log*
@@ -33,3 +35,7 @@ ui-debug.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# secrets
+service-account.json
+

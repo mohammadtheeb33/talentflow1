@@ -3,7 +3,7 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 export type HiringStatus = "accepted" | "rejected" | "undecided";
 
-export async function updateHiringStatus(candidateId: string, status: HiringStatus) {
+export async function updateHiringStatus(candidateId: string, status: HiringStatus, rejectionReason?: string) {
   const db = getClientFirestore();
   const auth = getClientAuth();
   const user = auth.currentUser;
@@ -14,10 +14,16 @@ export async function updateHiringStatus(candidateId: string, status: HiringStat
 
   const ref = doc(db, "cvs", candidateId);
   
-  await updateDoc(ref, {
+  const updates: any = {
     hiringStatus: status,
     decidedAt: serverTimestamp(),
     decidedBy: user.uid,
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  if (status === 'rejected' && rejectionReason) {
+    updates.rejectionReason = rejectionReason;
+  }
+
+  await updateDoc(ref, updates);
 }

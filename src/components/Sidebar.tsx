@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 const links = [
-  { href: "/cvs", label: "Candidates", icon: Users },
+  { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/job-profiles", label: "Jobs", icon: Briefcase },
   { href: "/reports", label: "Reports", icon: FileBarChart },
 ];
@@ -36,7 +36,7 @@ export default function Sidebar() {
             try {
               document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
               await signOut(auth);
-              router.push("/auth/login");
+              router.push("/login");
               return;
             } catch (_) {}
           }
@@ -123,7 +123,7 @@ export default function Sidebar() {
                 document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
                 const auth = getClientAuth();
                 await signOut(auth);
-                router.push("/auth/login");
+                router.push("/login");
                 router.refresh();
               } catch (_) {}
             }}
