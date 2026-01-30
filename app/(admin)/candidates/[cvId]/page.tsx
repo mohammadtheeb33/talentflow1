@@ -524,12 +524,29 @@ export default function CvDetailPage({ params }: { params: { cvId: string } }) {
       }
 
       if (!res.ok) {
-        throw new Error(result?.error || `HTTP ${res.status}`);
+        const errorMessage = result?.details || result?.error || `HTTP ${res.status}`;
+        if (res.status === 503) {
+          toast.error(errorMessage || "AI Service is busy. Please try again later.");
+          return;
+        }
+        throw new Error(errorMessage);
       }
 
       toast.success("Scoring completed successfully");
       router.refresh();
     } catch (e: any) {
+      const errorMessage = String(e?.message || e || "");
+      const isAiBusy =
+        errorMessage.includes("AI Service is busy") ||
+        errorMessage.includes("All models failed") ||
+        errorMessage.includes("429") ||
+        errorMessage.includes("503") ||
+        errorMessage.toLowerCase().includes("rate limit") ||
+        errorMessage.toLowerCase().includes("overloaded");
+      if (isAiBusy) {
+        toast.error(errorMessage || "AI Service is busy. Please try again later.");
+        return;
+      }
       console.error("Scoring API failed, falling back to local/trigger:", e);
       // Fallback: If API fails, try to trigger via status update
       try {

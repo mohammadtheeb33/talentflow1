@@ -15,7 +15,7 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 // Helper: Smart Retry for AI with Model Fallback
 async function generateWithRetry(prompt: string, retries = 3) {
-  const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash"];
+  const modelsToTry = ["gemini-2.0-flash"];
   
   for (const modelName of modelsToTry) {
     const model = genAI.getGenerativeModel({ model: modelName });
@@ -373,9 +373,18 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("[Admin Score] Error:", error);
+    const message = String(error?.message || "Unknown error");
+    const isAiBusy =
+      message.includes("AI Service is busy") ||
+      message.includes("All models failed") ||
+      message.includes("429") ||
+      message.includes("503") ||
+      message.toLowerCase().includes("rate limit") ||
+      message.toLowerCase().includes("overloaded");
     return NextResponse.json({ 
-        error: 'Scoring failed', 
-        details: error.message 
-    }, { status: 500 });
+        error: 'Scoring failed',
+        details: message,
+        code: isAiBusy ? "AI_BUSY" : "SCORING_ERROR"
+    }, { status: isAiBusy ? 503 : 500 });
   }
 }

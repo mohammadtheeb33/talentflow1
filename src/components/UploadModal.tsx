@@ -28,6 +28,23 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  const extractErrorMessage = (value: any) => {
+    if (!value) return "Upload failed";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return parsed?.details || parsed?.error || parsed?.message || "Upload failed";
+        } catch (_) {
+          return trimmed;
+        }
+      }
+      return trimmed;
+    }
+    return value?.details || value?.error || value?.message || "Upload failed";
+  };
+
   // Fetch Job Profiles
   useEffect(() => {
     if (!isOpen) return;
@@ -203,8 +220,18 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
             throw new Error("You have run out of credits. Please contact admin to upgrade.");
         }
         if (!analysisRes.ok) {
-            const details = await analysisRes.text().catch(() => "");
-            throw new Error(details || "Failed to start analysis");
+            let details: any = "";
+            try {
+              details = await analysisRes.json();
+            } catch (_) {
+              details = await analysisRes.text().catch(() => "");
+            }
+            const message = extractErrorMessage(details);
+            if (analysisRes.status === 503) {
+              setError(message || "AI Service is busy. Please try again later.");
+              return;
+            }
+            throw new Error(message || "Failed to start analysis");
         }
 
         toast.info("AI Analysis started in background...");
@@ -214,7 +241,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
         router.refresh();
     } catch (err: any) {
         console.error("Upload process failed", err);
-        setError(err.message || "Upload failed");
+        setError(extractErrorMessage(err));
     } finally {
         setUploading(false);
     }

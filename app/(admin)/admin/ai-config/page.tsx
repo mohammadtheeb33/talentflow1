@@ -10,11 +10,7 @@ type AiSettings = {
   resume_prompt: string;
 };
 
-const MODEL_OPTIONS = [
-  "gemini-2.0-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-pro-latest"
-];
+const MODEL_OPTIONS = ["gemini-2.0-flash"];
 
 const DEFAULT_MODEL = "gemini-2.0-flash";
 
@@ -81,8 +77,9 @@ export default function AdminAiConfigPage() {
     const ref = doc(db, "system_config", "ai_settings");
     const unsub = onSnapshot(ref, (snap) => {
       const data = snap.exists() ? (snap.data() as any) : {};
+      const rawModel = String(data?.model || data?.model_name || DEFAULT_MODEL);
       setSettings({
-        model: String(data?.model || data?.model_name || DEFAULT_MODEL),
+        model: MODEL_OPTIONS.includes(rawModel) ? rawModel : DEFAULT_MODEL,
         resume_prompt: String(data?.resume_prompt || DEFAULT_RESUME_PROMPT)
       });
       setLoading(false);

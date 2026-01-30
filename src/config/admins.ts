@@ -1,17 +1,14 @@
 import { doc, getDoc } from "firebase/firestore";
 import { getClientFirestore } from "@/lib/firebase";
 
-const envAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAIL || "")
-  .split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
-
-export const ADMINS: string[] = Array.from(new Set(envAdmins));
+export const ADMINS: string[] = [
+  "admin@example.com"
+];
 
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const x = email.toLowerCase();
-  return ADMINS.some((e) => e === x);
+  return ADMINS.some(e => e.toLowerCase() === x);
 }
 
 export async function isAdminUser(user: { uid?: string; email?: string | null } | null): Promise<boolean> {

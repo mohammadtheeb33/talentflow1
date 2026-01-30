@@ -6,7 +6,6 @@ import { getClientAuth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { ShieldCheck } from "lucide-react";
 import { isAdminUser } from "@/config/admins";
-import { createUserInFirestore, ROLES } from "@/lib/auth";
 import { toast } from "sonner";
 
 export function AdminLoginClient() {
@@ -26,7 +25,6 @@ export function AdminLoginClient() {
             router.replace("/admin/login");
             return;
           }
-          await createUserInFirestore(user, ROLES.ADMIN);
           const maxAge = 60 * 60 * 24 * 30;
           const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
           document.cookie = `auth_token=true; Max-Age=${maxAge}; path=/; SameSite=Lax${secure}`;

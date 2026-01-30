@@ -19,7 +19,7 @@ function getGenAI() {
 
 // Models to try in order of preference (Speed -> Stability)
 // Updated based on available models for the current API key
-const MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-pro-latest"];
+const MODELS = ["gemini-2.0-flash"];
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
